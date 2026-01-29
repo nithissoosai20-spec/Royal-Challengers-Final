@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+    <h2>Report a Security Incident</h2>
+    <p>Use this form to report suspicious emails, unauthorized access, or hardware theft.</p>
+    
+    <form method="POST">
+        <label>Incident Type</label>
+        <select name="type" required>
+            <option value="Phishing Email">Phishing Email</option>
+            <option value="Unauthorized Access">Unauthorized Access</option>
+            <option value="Physical Theft">Physical Security Breach</option>
+            <option value="Malware/Virus">Malware/Virus Suspicion</option>
+            <option value="Other">Other</option>
+        </select>
+
+        <label>How urgent is this? (Your Opinion)</label>
+        <select name="severity" required>
+            <option value="Low">Low (Informational)</option>
+            <option value="Medium">Medium (Action Required)</option>
+            <option value="High">High (Immediate Danger)</option>
+        </select>
+
+        <label>Detailed Message</label>
+        <textarea name="message" rows="5" placeholder="Describe what happened..." required></textarea>
+
+        <button type="submit" class="btn">Submit Report</button>
+    </form>
+</div>
+{% endblock %}

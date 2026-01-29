@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="color: #da251d;">Security Operations Center (SOC) Logs</h2>
+        <span style="background: #1a1a1b; color: #c6a15b; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">
+            Role: {{ session['role'] }}
+        </span>
+    </div>
+    <p>Live feed of system incidents and user activity across the Royal Challengers network.</p>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9rem;">
+        <thead>
+            <tr style="background-color: #1a1a1b; color: white; text-align: left;">
+                <th style="padding: 12px;">Timestamp</th>
+                <th style="padding: 12px;">Incident / Event</th>
+                <th style="padding: 12px;">User Email</th>
+                <th style="padding: 12px;">Severity</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr style="border-bottom: 1px solid #ddd;" 
+                class="{{ 'high-severity' if log.severity == 'High' else 'medium-severity' if log.severity == 'Medium' else 'low-severity' }}">
+                <td style="padding: 12px;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td style="padding: 12px;">{{ log.event }}</td>
+                <td style="padding: 12px;">{{ log.email }}</td>
+                <td style="padding: 12px;">
+                    <span style="padding: 3px 8px; border-radius: 4px; font-weight: bold; border: 1px solid;">
+                        {{ log.severity }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

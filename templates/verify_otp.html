@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+    <h2>Verify Your Identity</h2>
+    <p>Enter the 6-digit code sent to your email.</p>
+    
+    <form action="/verify-otp" method="POST">
+        <input type="text" name="otp" placeholder="Enter OTP" required maxlength="6">
+        <button type="submit" class="btn">Confirm Registration</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1350&q=80'); height: 400px; background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; text-align: center;">
+    <h1 style="font-size: 3.5rem; margin: 0; color: #da251d;">ROYAL CHALLENGERS</h1>
+    <p style="font-size: 1.2rem; color: #c6a15b; letter-spacing: 2px;">PREMIUM CYBERSECURITY & INTELLIGENCE SOLUTIONS</p>
+    <a href="/register" class="btn" style="margin-top: 20px; text-decoration: none;">Join the Team</a>
+</div>
+
+<div class="container">
+    <section id="about" style="margin-bottom: 50px;">
+        <h2>About Royal Challengers</h2>
+        <p>Founded on the principles of integrity and innovation, Royal Challengers is a global leader in digital forensics and threat management. We provide state-of-the-art security infrastructures for Fortune 500 companies.</p>
+    </section>
+
+    <section id="services" style="margin-bottom: 50px;">
+        <h2>Our Core Services</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+            <div style="padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                <h4 style="color: #da251d;">Digital Forensics</h4>
+                <p>Recovering vital data and tracking sophisticated cyber-attack origins.</p>
+            </div>
+            <div style="padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                <h4 style="color: #da251d;">Incident Response</h4>
+                <p>24/7 monitoring with voice-alert triggers for critical system breaches.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="careers" style="margin-bottom: 50px; background: #f9f9f9; padding: 20px; border-radius: 8px;">
+        <h2>Careers at RC</h2>
+        <p>Looking for a challenge? We are currently hiring:</p>
+        <ul style="list-style-type: square;">
+            <li>Junior Security Analyst (Entry Level)</li>
+            <li>Senior Penetration Tester (5+ Years Exp)</li>
+            <li>Digital Forensics Specialist</li>
+        </ul>
+        <p>Register as an <strong>Employee</strong> to submit your CV today.</p>
+    </section>
+
+    <section id="contact">
+        <h2>Contact Our Security Hub</h2>
+        <p><strong>Address:</strong> RC Tech Park, Electronic City, Phase 1</p>
+        <p><strong>Support:</strong> support@royalchallengers.com</p>
+        <p style="font-size: 0.7rem; color: #eee;">
+            <a href="/honeytoken-access" style="color: #ddd; text-decoration: none;">Internal Admin Portal Access</a>
+        </p>
+    </section>
+</div>
+{% endblock %}

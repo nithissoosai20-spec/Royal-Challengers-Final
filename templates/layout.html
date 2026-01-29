@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Royal Challengers Corp | Secure Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav>
+        <div class="nav-brand">RC CORP</div>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/about">About</a>
+            <a href="/services">Services</a>
+            <a href="/careers">Careers</a>
+            <a href="/contact">Contact</a>
+            
+            {% if session.get('email') %}
+                <a href="/report-incident">Report Incident</a>
+                {% if session.get('role') in ['Admin', 'Security Analysis'] %}
+                    <a href="/dashboard" style="color: #c6a15b; font-weight: bold;">SOC DASHBOARD</a>
+                {% endif %}
+                <a href="/logout" class="logout-btn">Logout</a>
+            {% else %}
+                <a href="/login">Login</a>
+                <a href="/register">Register</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash-container">
+            {% for message in messages %}
+                <div class="flash-message">{{ message }}</div>
+            {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer style="text-align: center; padding: 20px; color: #666; font-size: 0.8rem;">
+        &copy; 2026 Royal Challengers Intelligence Division. All Rights Reserved.
+    </footer>
+</body>
+</html>
