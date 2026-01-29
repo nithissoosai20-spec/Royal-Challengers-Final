@@ -15,6 +15,12 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 
+# 🐝 HONEYTOKEN EMAIL (DECOY)
+HONEYTOKEN_EMAIL = os.getenv(
+    "HONEYTOKEN_EMAIL",
+    "admin-trap@royalchallengers.com"
+)
+
 # ================= DATABASE =================
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client["royal_challengers_db"]
@@ -37,16 +43,22 @@ mail = Mail(app)
 # ================= TWILIO =================
 twilio_client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_TOKEN"))
 
-# ================= LOGGING =================
+# ================= ALERTING & LOGGING =================
 def trigger_voice_alert(event):
     try:
         twilio_client.calls.create(
-            twiml=f'<Response><Say>{event}</Say></Response>',
+            twiml=f"""
+<Response>
+    <Say voice="alice" language="en-IN">
+        Security Alert. {event}.
+    </Say>
+</Response>
+""",
             to=os.getenv("MY_PHONE"),
             from_=os.getenv("TWILIO_PHONE")
         )
     except Exception as e:
-        print("⚠️ Twilio failed:", e)
+        print("⚠️ Twilio alert failed:", e)
 
 def log_incident(event, severity, email="Anonymous"):
     try:
@@ -55,7 +67,8 @@ def log_incident(event, severity, email="Anonymous"):
             "event": event,
             "severity": severity,
             "email": email,
-            "ip": request.remote_addr
+            "ip": request.remote_addr,
+            "user_agent": request.headers.get("User-Agent")
         })
     except Exception as e:
         print("⚠️ Logging failed:", e)
@@ -86,14 +99,14 @@ def security_headers(response):
 def home():
     return render_template("home.html")
 
-# ---------- REGISTER (OTP FOR ALL ROLES) ----------
+# ---------- REGISTER ----------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         name = escape(request.form.get("name"))
         email = escape(request.form.get("email"))
         password = request.form.get("password")
-        role = request.form.get("role").capitalize()
+        role = request.form.get("role")
 
         if not all([name, email, password, role]):
             flash("All fields required")
@@ -109,7 +122,8 @@ def register():
             "password": generate_password_hash(password),
             "role": role,
             "status": "Unverified",
-            "failed_attempts": 0
+            "failed_attempts": 0,
+            "created_at": datetime.utcnow()
         }
 
         otp = str(random.randint(100000, 999999))
@@ -129,7 +143,7 @@ def register():
             flash("OTP service unavailable")
             return redirect(url_for("register"))
 
-        log_incident("OTP SENT", "Low", email)
+        log_incident("OTP SENT (Registration)", "Low", email)
         return render_template("verify_otp.html")
 
     return render_template("register.html")
@@ -146,7 +160,7 @@ def verify_otp():
     if user["role"] == "Employee":
         user["status"] = "Active"
     else:
-        user["status"] = "Pending"   # Analyst & Admin need approval
+        user["status"] = "Pending"
 
     users_col.insert_one(user)
 
@@ -162,13 +176,30 @@ def verify_otp():
     flash("Email verified. Awaiting approval if required.")
     return redirect(url_for("login"))
 
-# ---------- LOGIN ----------
+# ---------- LOGIN (WITH HONEYTOKEN TRAP) ----------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
 
+        # 🐝 HONEYTOKEN EMAIL TRAP (FIRST CHECK)
+        if email == HONEYTOKEN_EMAIL:
+            blacklist_col.insert_one({
+                "ip": request.remote_addr,
+                "reason": "Honeytoken email used",
+                "timestamp": datetime.utcnow()
+            })
+
+            log_incident(
+                "HONEYTOKEN EMAIL HIT",
+                "High",
+                email
+            )
+
+            return "Unauthorized", 401
+
+        # ---------- NORMAL LOGIN FLOW ----------
         user = users_col.find_one({"email": email})
         if not user:
             flash("Invalid credentials")
