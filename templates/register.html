@@ -1,21 +1,65 @@
 {% extends "layout.html" %}
 {% block content %}
+
 <div class="container">
     <h2>Royal Challengers Registration</h2>
-    <form method="POST">
-        <input type="text" name="name" placeholder="Full Name" required>
-        <input type="email" name="email" placeholder="Corporate Email" required>
-        <input type="password" name="password" placeholder="Password" required>
-        
-        <label>Select Your Department:</label>
-        <select name="role">
-            <option value="Employee">Employee (Requires Email OTP)</option>
-            <option value="Security Analysis">Security Analysis (Requires Admin Approval)</option>
-            <option value="Admin">System Administrator (Requires Admin Approval)</option>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class="flash-messages">
+          {% for message in messages %}
+            <li>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('register') }}">
+        <input
+            type="text"
+            name="name"
+            placeholder="Full Name"
+            required
+        >
+
+        <input
+            type="email"
+            name="email"
+            placeholder="Corporate Email"
+            required
+        >
+
+        <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            required
+        >
+
+        <label for="role">Select Your Department:</label>
+        <select name="role" id="role" required>
+            <option value="">-- Select Role --</option>
+            <option value="Employee">
+                Employee (Email OTP Verification)
+            </option>
+            <option value="Security Analyst">
+                Security Analyst (OTP + Admin Approval)
+            </option>
+            <option value="Admin">
+                System Administrator (OTP + Admin Approval)
+            </option>
         </select>
-        
-        <button type="submit" class="btn">Apply for Access</button>
+
+        <button type="submit" class="btn">
+            Apply for Access
+        </button>
     </form>
-    <p>Already have access? <a href="/login">Login here</a></p>
+
+    <p class="login-link">
+        Already have access?
+        <a href="{{ url_for('login') }}">Login here</a>
+    </p>
 </div>
+
 {% endblock %}

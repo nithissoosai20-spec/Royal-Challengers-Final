@@ -1,6 +1,6 @@
 Flask
 gunicorn
-pymongo
+pymongo[srv]
 dnspython
 twilio
 Flask-Mail
