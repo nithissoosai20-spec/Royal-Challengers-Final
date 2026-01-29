@@ -1,0 +1,8 @@
+Flask
+gunicorn
+pymongo
+dnspython
+twilio
+Flask-Mail
+python-dotenv
+markupsafe
