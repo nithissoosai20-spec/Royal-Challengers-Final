@@ -7,7 +7,7 @@ from datetime import datetime
 
 from flask import (
     Flask, render_template, request, redirect,
-    url_for, session, flash, abort, has_request_context
+    url_for, session, flash, abort
 )
 from flask_mail import Mail, Message
 from pymongo import MongoClient
@@ -32,7 +32,7 @@ app.logger.handlers = logging.getLogger().handlers
 app.logger.setLevel(logging.INFO)
 app.logger.info("🚀 Application started")
 
-# ================= MITRE ATT&CK =================
+# ================= MITRE ATT&CK MAP =================
 MITRE_MAP = {
     "LOGIN FAILED": {
         "tactic": "Credential Access",
@@ -93,18 +93,17 @@ def trigger_voice_alert(event):
     except Exception as e:
         app.logger.error(f"Twilio failed: {e}")
 
-# ================= INCIDENT LOGGER =================
-def log_incident(event, severity, email="Anonymous", category="security"):
-    if has_request_context():
-        ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
-        if ip_addr and "," in ip_addr:
-            ip_addr = ip_addr.split(",")[0].strip()
-        path = request.path
-        method = request.method
-        user_agent = request.headers.get("User-Agent")
-    else:
-        ip_addr = path = method = user_agent = "N/A"
-
+# ================= CORE LOGGER (NO REQUEST CONTEXT HERE) =================
+def log_incident(
+    event,
+    severity,
+    email="Anonymous",
+    category="security",
+    ip_addr="N/A",
+    path="N/A",
+    method="N/A",
+    user_agent="N/A"
+):
     logs_col.insert_one({
         "timestamp": datetime.utcnow(),
         "event": event,
@@ -127,15 +126,32 @@ def log_incident(event, severity, email="Anonymous", category="security"):
             daemon=True
         ).start()
 
-# ================= ASYNC LOGGER =================
+# ================= ASYNC ACCESS LOGGER (CONTEXT SAFE) =================
 def async_log(event, severity, email, category):
+    ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+    if ip_addr and "," in ip_addr:
+        ip_addr = ip_addr.split(",")[0].strip()
+
+    path = request.path
+    method = request.method
+    user_agent = request.headers.get("User-Agent")
+
     threading.Thread(
         target=log_incident,
-        args=(event, severity, email, category),
+        args=(
+            event,
+            severity,
+            email,
+            category,
+            ip_addr,
+            path,
+            method,
+            user_agent
+        ),
         daemon=True
     ).start()
 
-# ================= PAGE VISIT LOGGER (NON-BLOCKING) =================
+# ================= PAGE VISIT LOGGER =================
 @app.before_request
 def log_page_visit():
     if request.path.startswith("/static"):
@@ -162,7 +178,16 @@ def block_blacklisted_ips():
         ip_addr = ip_addr.split(",")[0].strip()
 
     if blacklist_col.find_one({"ip": ip_addr}):
-        log_incident("BLACKLISTED IP ACCESS", "High", "Unknown")
+        log_incident(
+            "BLACKLISTED IP ACCESS",
+            "High",
+            "Unknown",
+            "security",
+            ip_addr,
+            request.path,
+            request.method,
+            request.headers.get("User-Agent")
+        )
         abort(403)
 
 # ================= ROUTES =================
@@ -205,8 +230,7 @@ def register():
             "name": name,
             "email": email,
             "password": generate_password_hash(password),
-            "status": "Unverified",
-            "failed_attempts": 0
+            "status": "Unverified"
         }
 
         msg = Message(
@@ -217,7 +241,17 @@ def register():
         msg.body = f"Your OTP is {otp}"
         mail.send(msg)
 
-        log_incident("OTP SENT", "Low", email)
+        log_incident(
+            "OTP SENT",
+            "Low",
+            email,
+            "security",
+            request.remote_addr,
+            request.path,
+            request.method,
+            request.headers.get("User-Agent")
+        )
+
         return render_template("verify_otp.html")
 
     return render_template("register.html")
@@ -229,13 +263,27 @@ def verify_otp():
         log_incident(
             "OTP FAILED",
             "Medium",
-            session.get("temp_user", {}).get("email")
+            session.get("temp_user", {}).get("email"),
+            "security",
+            request.remote_addr,
+            request.path,
+            request.method,
+            request.headers.get("User-Agent")
         )
         flash("Invalid OTP")
         return render_template("verify_otp.html")
 
     users_col.insert_one(session["temp_user"])
-    log_incident("OTP VERIFIED", "Low", session["temp_user"]["email"])
+    log_incident(
+        "OTP VERIFIED",
+        "Low",
+        session["temp_user"]["email"],
+        "security",
+        request.remote_addr,
+        request.path,
+        request.method,
+        request.headers.get("User-Agent")
+    )
     session.clear()
     return redirect(url_for("login"))
 
@@ -248,12 +296,30 @@ def login():
 
         user = users_col.find_one({"email": email})
         if not user or not check_password_hash(user["password"], password):
-            log_incident("LOGIN FAILED", "Medium", email)
+            log_incident(
+                "LOGIN FAILED",
+                "Medium",
+                email,
+                "security",
+                request.remote_addr,
+                request.path,
+                request.method,
+                request.headers.get("User-Agent")
+            )
             flash("Invalid credentials")
             return redirect(url_for("login"))
 
         session["email"] = email
-        log_incident("LOGIN SUCCESS", "Low", email)
+        log_incident(
+            "LOGIN SUCCESS",
+            "Low",
+            email,
+            "security",
+            request.remote_addr,
+            request.path,
+            request.method,
+            request.headers.get("User-Agent")
+        )
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
@@ -268,14 +334,32 @@ def dashboard():
 # ================= LOGOUT =================
 @app.route("/logout")
 def logout():
-    log_incident("LOGOUT", "Low", session.get("email"))
+    log_incident(
+        "LOGOUT",
+        "Low",
+        session.get("email"),
+        "security",
+        request.remote_addr,
+        request.path,
+        request.method,
+        request.headers.get("User-Agent")
+    )
     session.clear()
     return redirect(url_for("home"))
 
 # ================= TEST =================
 @app.route("/force-log")
 def force_log():
-    log_incident("FORCE LOG TEST", "Low", "tester@local")
+    log_incident(
+        "FORCE LOG TEST",
+        "Low",
+        "tester@local",
+        "security",
+        request.remote_addr,
+        request.path,
+        request.method,
+        request.headers.get("User-Agent")
+    )
     return "log inserted"
 
 # ================= RUN =================
