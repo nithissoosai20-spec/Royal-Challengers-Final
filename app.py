@@ -28,12 +28,11 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-
 app.logger.handlers = logging.getLogger().handlers
 app.logger.setLevel(logging.INFO)
 app.logger.info("🚀 Application started")
 
-# ================= MITRE ATT&CK MAP =================
+# ================= MITRE ATT&CK =================
 MITRE_MAP = {
     "LOGIN FAILED": {
         "tactic": "Credential Access",
@@ -106,8 +105,6 @@ def log_incident(event, severity, email="Anonymous", category="security"):
     else:
         ip_addr = path = method = user_agent = "N/A"
 
-    mitre = MITRE_MAP.get(event, {})
-
     logs_col.insert_one({
         "timestamp": datetime.utcnow(),
         "event": event,
@@ -118,7 +115,7 @@ def log_incident(event, severity, email="Anonymous", category="security"):
         "path": path,
         "method": method,
         "user_agent": user_agent,
-        "mitre": mitre
+        "mitre": MITRE_MAP.get(event, {})
     })
 
     app.logger.info(f"📝 {event} | {email} | {ip_addr}")
@@ -130,17 +127,27 @@ def log_incident(event, severity, email="Anonymous", category="security"):
             daemon=True
         ).start()
 
-# ================= PAGE VISIT LOGGER =================
+# ================= ASYNC LOGGER =================
+def async_log(event, severity, email, category):
+    threading.Thread(
+        target=log_incident,
+        args=(event, severity, email, category),
+        daemon=True
+    ).start()
+
+# ================= PAGE VISIT LOGGER (NON-BLOCKING) =================
 @app.before_request
 def log_page_visit():
     if request.path.startswith("/static"):
+        return
+    if request.method != "GET":
         return
     if request.path in ["/force-log"]:
         return
 
     email = session.get("email", "Guest")
 
-    log_incident(
+    async_log(
         event="PAGE VISIT",
         severity="Info",
         email=email,
@@ -155,11 +162,7 @@ def block_blacklisted_ips():
         ip_addr = ip_addr.split(",")[0].strip()
 
     if blacklist_col.find_one({"ip": ip_addr}):
-        log_incident(
-            "BLACKLISTED IP ACCESS",
-            "High",
-            "Unknown"
-        )
+        log_incident("BLACKLISTED IP ACCESS", "High", "Unknown")
         abort(403)
 
 # ================= ROUTES =================
@@ -168,6 +171,23 @@ def block_blacklisted_ips():
 def home():
     return render_template("home.html")
 
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+@app.route("/services")
+def services():
+    return render_template("services.html")
+
+@app.route("/careers")
+def careers():
+    return render_template("careers.html")
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+# ================= REGISTER =================
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -202,10 +222,15 @@ def register():
 
     return render_template("register.html")
 
+# ================= OTP VERIFY =================
 @app.route("/verify-otp", methods=["POST"])
 def verify_otp():
     if request.form.get("otp") != session.get("otp"):
-        log_incident("OTP FAILED", "Medium", session.get("temp_user", {}).get("email"))
+        log_incident(
+            "OTP FAILED",
+            "Medium",
+            session.get("temp_user", {}).get("email")
+        )
         flash("Invalid OTP")
         return render_template("verify_otp.html")
 
@@ -214,6 +239,7 @@ def verify_otp():
     session.clear()
     return redirect(url_for("login"))
 
+# ================= LOGIN =================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -232,12 +258,14 @@ def login():
 
     return render_template("login.html")
 
+# ================= DASHBOARD =================
 @app.route("/dashboard")
 def dashboard():
     if "email" not in session:
         return redirect(url_for("login"))
     return render_template("dashboard.html")
 
+# ================= LOGOUT =================
 @app.route("/logout")
 def logout():
     log_incident("LOGOUT", "Low", session.get("email"))
