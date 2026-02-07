@@ -2,7 +2,7 @@ import os
 import random
 import threading
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
 from flask_mail import Mail, Message
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -22,6 +22,7 @@ HONEYTOKEN_EMAIL = os.getenv(
 )
 
 # ================= DATABASE =================
+# Using Atlas connection with srv support
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client["royal_challengers_db"]
 
@@ -61,13 +62,18 @@ def trigger_voice_alert(event):
         print("⚠️ Twilio alert failed:", e)
 
 def log_incident(event, severity, email="Anonymous"):
+    # Get Real IP for logging
+    ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if ip_addr and ',' in ip_addr:
+        ip_addr = ip_addr.split(',')[0].strip()
+
     try:
         logs_col.insert_one({
             "timestamp": datetime.utcnow(),
             "event": event,
             "severity": severity,
             "email": email,
-            "ip": request.remote_addr,
+            "ip": ip_addr,
             "user_agent": request.headers.get("User-Agent")
         })
     except Exception as e:
@@ -80,11 +86,16 @@ def log_incident(event, severity, email="Anonymous"):
             daemon=True
         ).start()
 
-# ================= SECURITY =================
+# ================= SECURITY MIDDLEWARE =================
 @app.before_request
 def block_blacklisted_ips():
-    if blacklist_col.find_one({"ip": request.remote_addr}):
-        return "403 Forbidden", 403
+    # Handle Proxy IPs on Render
+    ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if ip_addr and ',' in ip_addr:
+        ip_addr = ip_addr.split(',')[0].strip()
+
+    if blacklist_col.find_one({"ip": ip_addr}):
+        abort(403) # Standard 403 Forbidden
 
 @app.after_request
 def security_headers(response):
@@ -98,6 +109,23 @@ def security_headers(response):
 @app.route("/")
 def home():
     return render_template("home.html")
+
+# New routes added to fix 404 errors
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+@app.route("/services")
+def services():
+    return render_template("services.html")
+
+@app.route("/careers")
+def careers():
+    return render_template("careers.html")
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
 
 # ---------- REGISTER ----------
 @app.route("/register", methods=["GET", "POST"])
@@ -156,24 +184,14 @@ def verify_otp():
         return render_template("verify_otp.html")
 
     user = session.get("temp_user")
-
-    if user["role"] == "Employee":
-        user["status"] = "Active"
-    else:
-        user["status"] = "Pending"
+    user["status"] = "Active" if user["role"] == "Employee" else "Pending"
 
     users_col.insert_one(user)
-
-    log_incident(
-        f"OTP VERIFIED ({user['role']})",
-        "Medium",
-        user["email"]
-    )
+    log_incident(f"OTP VERIFIED ({user['role']})", "Medium", user["email"])
 
     session.pop("otp", None)
     session.pop("temp_user", None)
-
-    flash("Email verified. Awaiting approval if required.")
+    flash("Email verified successfully.")
     return redirect(url_for("login"))
 
 # ---------- LOGIN (WITH HONEYTOKEN TRAP) ----------
@@ -183,57 +201,38 @@ def login():
         email = request.form.get("email")
         password = request.form.get("password")
 
-        # 🐝 HONEYTOKEN EMAIL TRAP (FIRST CHECK)
+        # 🐝 HONEYTOKEN EMAIL TRAP
         if email == HONEYTOKEN_EMAIL:
+            ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
+            if ip_addr and ',' in ip_addr:
+                ip_addr = ip_addr.split(',')[0].strip()
+
             blacklist_col.insert_one({
-                "ip": request.remote_addr,
+                "ip": ip_addr,
                 "reason": "Honeytoken email used",
                 "timestamp": datetime.utcnow()
             })
-
-            log_incident(
-                "HONEYTOKEN EMAIL HIT",
-                "High",
-                email
-            )
-
+            log_incident("HONEYTOKEN EMAIL HIT", "High", email)
             return "Unauthorized", 401
 
-        # ---------- NORMAL LOGIN FLOW ----------
         user = users_col.find_one({"email": email})
-        if not user:
-            flash("Invalid credentials")
-            return redirect(url_for("login"))
-
-        if user["status"] == "Pending":
-            flash("Admin approval required")
-            return redirect(url_for("login"))
-
-        if user["status"] == "Locked":
-            flash("Account locked")
+        if not user or user["status"] == "Locked":
+            flash("Invalid credentials or account locked")
             return redirect(url_for("login"))
 
         if check_password_hash(user["password"], password):
-            users_col.update_one(
-                {"email": email},
-                {"$set": {"failed_attempts": 0}}
-            )
+            users_col.update_one({"email": email}, {"$set": {"failed_attempts": 0}})
             session["email"] = user["email"]
             session["role"] = user["role"]
             return redirect(url_for("dashboard"))
 
         attempts = user.get("failed_attempts", 0) + 1
         users_col.update_one(
-            {"email": email},
-            {"$set": {
-                "failed_attempts": attempts,
-                "status": "Locked" if attempts >= 3 else user["status"]
-            }}
+            {"email": email}, 
+            {"$set": {"failed_attempts": attempts, "status": "Locked" if attempts >= 3 else user["status"]}}
         )
-
         if attempts >= 3:
             log_incident("BRUTE FORCE DETECTED", "High", email)
-
         flash("Invalid credentials")
 
     return render_template("login.html")
@@ -245,18 +244,12 @@ def dashboard():
         return redirect(url_for("login"))
 
     logs, reports = [], []
-
     if session["role"] in ["Admin", "Security Analyst"]:
         logs = list(logs_col.find().sort("timestamp", -1))
         reports = list(reports_col.find().sort("timestamp", -1))
 
-    return render_template(
-        "dashboard.html",
-        logs=logs,
-        user_reports=reports
-    )
+    return render_template("dashboard.html", logs=logs, user_reports=reports)
 
-# ---------- LOGOUT ----------
 @app.route("/logout")
 def logout():
     session.clear()
@@ -264,4 +257,5 @@ def logout():
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
