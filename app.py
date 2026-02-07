@@ -1,8 +1,14 @@
 import os
 import random
 import threading
+import logging
+import sys
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
+
+from flask import (
+    Flask, render_template, request, redirect,
+    url_for, session, flash, abort, has_request_context
+)
 from flask_mail import Mail, Message
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -10,19 +16,31 @@ from twilio.rest import Client
 from dotenv import load_dotenv
 from markupsafe import escape
 
-# ================= CONFIG =================
+# ================= ENV & APP =================
 load_dotenv()
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 
-# 🐝 HONEYTOKEN EMAIL (DECOY)
+# ================= LOGGING (RENDER SAFE) =================
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout)],
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
+app.logger.handlers = logging.getLogger().handlers
+app.logger.setLevel(logging.INFO)
+
+app.logger.info("🚀 Application booting")
+
+# ================= HONEYTOKEN =================
 HONEYTOKEN_EMAIL = os.getenv(
     "HONEYTOKEN_EMAIL",
     "admin-trap@royalchallengers.com"
 )
 
 # ================= DATABASE =================
-# Using Atlas connection with srv support
 try:
     client = MongoClient(os.getenv("MONGO_URI"))
     db = client["royal_challengers_db"]
@@ -30,9 +48,9 @@ try:
     logs_col = db["security_logs"]
     blacklist_col = db["blacklist"]
     reports_col = db["user_reports"]
-    print("✅ MongoDB Atlas connected successfully")
+    app.logger.info("✅ MongoDB Atlas connected")
 except Exception as e:
-    print(f"❌ Initial Connection Error: {e}")
+    app.logger.error(f"❌ MongoDB connection failed: {e}")
 
 # ================= MAIL =================
 app.config.update(
@@ -45,9 +63,12 @@ app.config.update(
 mail = Mail(app)
 
 # ================= TWILIO =================
-twilio_client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_TOKEN"))
+twilio_client = Client(
+    os.getenv("TWILIO_SID"),
+    os.getenv("TWILIO_TOKEN")
+)
 
-# ================= ALERTING & LOGGING =================
+# ================= VOICE ALERT =================
 def trigger_voice_alert(event):
     try:
         twilio_client.calls.create(
@@ -61,14 +82,22 @@ def trigger_voice_alert(event):
             to=os.getenv("MY_PHONE"),
             from_=os.getenv("TWILIO_PHONE")
         )
+        app.logger.warning("📞 Voice alert triggered")
     except Exception as e:
-        print("⚠️ Twilio alert failed:", e)
+        app.logger.error(f"⚠️ Twilio failed: {e}")
 
+# ================= INCIDENT LOGGER =================
 def log_incident(event, severity, email="Anonymous"):
-    # Get Real IP for logging
-    ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip_addr and ',' in ip_addr:
-        ip_addr = ip_addr.split(',')[0].strip()
+    if has_request_context():
+        ip_addr = request.headers.get(
+            "X-Forwarded-For", request.remote_addr
+        )
+        if ip_addr and "," in ip_addr:
+            ip_addr = ip_addr.split(",")[0].strip()
+        user_agent = request.headers.get("User-Agent")
+    else:
+        ip_addr = "N/A"
+        user_agent = "N/A"
 
     try:
         logs_col.insert_one({
@@ -77,12 +106,11 @@ def log_incident(event, severity, email="Anonymous"):
             "severity": severity,
             "email": email,
             "ip": ip_addr,
-            "user_agent": request.headers.get("User-Agent")
+            "user_agent": user_agent
         })
-        print(f"✅ LOG SUCCESS: {event} for {email}")
+        app.logger.info(f"📝 LOGGED: {event} | {email}")
     except Exception as e:
-        # This will reveal EXACTLY why logs aren't showing in Atlas
-        print(f"❌ LOG DATABASE ERROR: {e}")
+        app.logger.error(f"❌ LOG DB ERROR: {e}")
 
     if severity == "High":
         threading.Thread(
@@ -94,12 +122,14 @@ def log_incident(event, severity, email="Anonymous"):
 # ================= SECURITY MIDDLEWARE =================
 @app.before_request
 def block_blacklisted_ips():
-    # Handle Proxy IPs on Render
-    ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip_addr and ',' in ip_addr:
-        ip_addr = ip_addr.split(',')[0].strip()
+    ip_addr = request.headers.get(
+        "X-Forwarded-For", request.remote_addr
+    )
+    if ip_addr and "," in ip_addr:
+        ip_addr = ip_addr.split(",")[0].strip()
 
     if blacklist_col.find_one({"ip": ip_addr}):
+        app.logger.warning(f"🚫 Blocked IP: {ip_addr}")
         abort(403)
 
 @app.after_request
@@ -113,7 +143,7 @@ def security_headers(response):
 
 @app.route("/")
 def home():
-    return render_template("home.html")
+    return render_template("home.html"), 200
 
 @app.route("/about")
 def about():
@@ -131,7 +161,7 @@ def careers():
 def contact():
     return render_template("contact.html")
 
-# ---------- REGISTER ----------
+# ================= REGISTER =================
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -148,7 +178,10 @@ def register():
             flash("Email already registered")
             return redirect(url_for("register"))
 
-        user_data = {
+        otp = str(random.randint(100000, 999999))
+
+        session["otp"] = otp
+        session["temp_user"] = {
             "name": name,
             "email": email,
             "password": generate_password_hash(password),
@@ -158,10 +191,6 @@ def register():
             "created_at": datetime.utcnow()
         }
 
-        otp = str(random.randint(100000, 999999))
-        session["otp"] = otp
-        session["temp_user"] = user_data
-
         try:
             msg = Message(
                 "Royal Challengers Email Verification",
@@ -170,9 +199,9 @@ def register():
             )
             msg.body = f"Your OTP is {otp}"
             mail.send(msg)
-            log_incident("OTP SENT (Registration)", "Low", email)
+            log_incident("OTP SENT", "Low", email)
         except Exception as e:
-            print("⚠️ Mail failed:", e)
+            app.logger.error(f"Mail failed: {e}")
             flash("OTP service unavailable")
             return redirect(url_for("register"))
 
@@ -180,7 +209,7 @@ def register():
 
     return render_template("register.html")
 
-# ---------- OTP VERIFY ----------
+# ================= OTP VERIFY =================
 @app.route("/verify-otp", methods=["POST"])
 def verify_otp():
     if request.form.get("otp") != session.get("otp"):
@@ -191,58 +220,61 @@ def verify_otp():
     user["status"] = "Active" if user["role"] == "Employee" else "Pending"
 
     users_col.insert_one(user)
-    log_incident(f"OTP VERIFIED ({user['role']})", "Medium", user["email"])
+    log_incident("OTP VERIFIED", "Medium", user["email"])
 
-    session.pop("otp", None)
-    session.pop("temp_user", None)
-    flash("Email verified successfully.")
+    session.clear()
+    flash("Email verified successfully")
     return redirect(url_for("login"))
 
-# ---------- LOGIN (WITH HONEYTOKEN TRAP) ----------
+# ================= LOGIN =================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
 
-        # 🐝 HONEYTOKEN EMAIL TRAP
         if email == HONEYTOKEN_EMAIL:
-            ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
-            if ip_addr and ',' in ip_addr:
-                ip_addr = ip_addr.split(',')[0].strip()
-
+            ip_addr = request.remote_addr
             blacklist_col.insert_one({
                 "ip": ip_addr,
-                "reason": "Honeytoken email used",
+                "reason": "Honeytoken triggered",
                 "timestamp": datetime.utcnow()
             })
-            log_incident("HONEYTOKEN EMAIL HIT", "High", email)
+            log_incident("HONEYTOKEN HIT", "High", email)
             return "Unauthorized", 401
 
         user = users_col.find_one({"email": email})
-        if not user or user["status"] == "Locked":
-            flash("Invalid credentials or account locked")
+        if not user:
+            flash("Invalid credentials")
             return redirect(url_for("login"))
 
         if check_password_hash(user["password"], password):
-            users_col.update_one({"email": email}, {"$set": {"failed_attempts": 0}})
-            session["email"] = user["email"]
+            users_col.update_one(
+                {"email": email},
+                {"$set": {"failed_attempts": 0}}
+            )
+            session["email"] = email
             session["role"] = user["role"]
-            log_incident("USER LOGIN SUCCESS", "Low", user["email"])
+            log_incident("LOGIN SUCCESS", "Low", email)
             return redirect(url_for("dashboard"))
 
         attempts = user.get("failed_attempts", 0) + 1
         users_col.update_one(
-            {"email": email}, 
-            {"$set": {"failed_attempts": attempts, "status": "Locked" if attempts >= 3 else user["status"]}}
+            {"email": email},
+            {"$set": {
+                "failed_attempts": attempts,
+                "status": "Locked" if attempts >= 3 else user["status"]
+            }}
         )
+
         if attempts >= 3:
             log_incident("BRUTE FORCE DETECTED", "High", email)
+
         flash("Invalid credentials")
 
     return render_template("login.html")
 
-# ---------- DASHBOARD ----------
+# ================= DASHBOARD =================
 @app.route("/dashboard")
 def dashboard():
     if "email" not in session:
@@ -253,14 +285,25 @@ def dashboard():
         logs = list(logs_col.find().sort("timestamp", -1))
         reports = list(reports_col.find().sort("timestamp", -1))
 
-    return render_template("dashboard.html", logs=logs, user_reports=reports)
+    return render_template(
+        "dashboard.html",
+        logs=logs,
+        user_reports=reports
+    )
 
+# ================= LOGOUT =================
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("home"))
 
+# ================= DEBUG ROUTE =================
+@app.route("/force-log")
+def force_log():
+    log_incident("FORCE LOG TEST", "Low", "tester@local")
+    return "log inserted"
+
 # ================= RUN =================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
