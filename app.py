@@ -23,13 +23,16 @@ HONEYTOKEN_EMAIL = os.getenv(
 
 # ================= DATABASE =================
 # Using Atlas connection with srv support
-client = MongoClient(os.getenv("MONGO_URI"))
-db = client["royal_challengers_db"]
-
-users_col = db["users"]
-logs_col = db["security_logs"]
-blacklist_col = db["blacklist"]
-reports_col = db["user_reports"]
+try:
+    client = MongoClient(os.getenv("MONGO_URI"))
+    db = client["royal_challengers_db"]
+    users_col = db["users"]
+    logs_col = db["security_logs"]
+    blacklist_col = db["blacklist"]
+    reports_col = db["user_reports"]
+    print("✅ MongoDB Atlas connected successfully")
+except Exception as e:
+    print(f"❌ Initial Connection Error: {e}")
 
 # ================= MAIL =================
 app.config.update(
@@ -76,8 +79,10 @@ def log_incident(event, severity, email="Anonymous"):
             "ip": ip_addr,
             "user_agent": request.headers.get("User-Agent")
         })
+        print(f"✅ LOG SUCCESS: {event} for {email}")
     except Exception as e:
-        print("⚠️ Logging failed:", e)
+        # This will reveal EXACTLY why logs aren't showing in Atlas
+        print(f"❌ LOG DATABASE ERROR: {e}")
 
     if severity == "High":
         threading.Thread(
@@ -95,7 +100,7 @@ def block_blacklisted_ips():
         ip_addr = ip_addr.split(',')[0].strip()
 
     if blacklist_col.find_one({"ip": ip_addr}):
-        abort(403) # Standard 403 Forbidden
+        abort(403)
 
 @app.after_request
 def security_headers(response):
@@ -110,7 +115,6 @@ def security_headers(response):
 def home():
     return render_template("home.html")
 
-# New routes added to fix 404 errors
 @app.route("/about")
 def about():
     return render_template("about.html")
@@ -166,12 +170,12 @@ def register():
             )
             msg.body = f"Your OTP is {otp}"
             mail.send(msg)
+            log_incident("OTP SENT (Registration)", "Low", email)
         except Exception as e:
             print("⚠️ Mail failed:", e)
             flash("OTP service unavailable")
             return redirect(url_for("register"))
 
-        log_incident("OTP SENT (Registration)", "Low", email)
         return render_template("verify_otp.html")
 
     return render_template("register.html")
@@ -224,6 +228,7 @@ def login():
             users_col.update_one({"email": email}, {"$set": {"failed_attempts": 0}})
             session["email"] = user["email"]
             session["role"] = user["role"]
+            log_incident("USER LOGIN SUCCESS", "Low", user["email"])
             return redirect(url_for("dashboard"))
 
         attempts = user.get("failed_attempts", 0) + 1
