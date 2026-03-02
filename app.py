@@ -151,10 +151,12 @@ def login():
         if user and check_password_hash(user["password"], password):
             # Admin "Accept IP" Security Check
             if email == os.getenv("ADMIN_EMAIL"):
-              #  if not authorized_ips_col.find_one({"email": email, "ip": ip}):
-               #     log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email)
-                #    flash("Blocked: New IP detected. Admin approval required.")
-                 #   return redirect(url_for("login"))
+                # We use 'pass' here so Python doesn't crash while lines are commented
+                pass 
+                # if not authorized_ips_col.find_one({"email": email, "ip": ip}):
+                #     log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email)
+                #     flash("Blocked: New IP detected. Admin approval required.")
+                #     return redirect(url_for("login"))
 
             session["email"] = email
             session["role"] = user.get("role", "Employee")
@@ -162,7 +164,6 @@ def login():
             return redirect(url_for("dashboard"))
         flash("Invalid credentials")
     return render_template("login.html")
-
 # ================= DASHBOARD (SYNCED) =================
 
 @app.route("/dashboard")
