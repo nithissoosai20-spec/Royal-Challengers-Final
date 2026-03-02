@@ -149,10 +149,16 @@ def login():
         ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
         if user and check_password_hash(user["password"], password):
-            # Admin "Accept IP" Security Check
+            # Admin Security Logic
             if email == os.getenv("ADMIN_EMAIL"):
-                # We use 'pass' here so Python doesn't crash while lines are commented
-                pass 
+                # AUTO-ACCEPT LOGIC: While you have the bypass active, 
+                # this line will save your IP automatically.
+                authorized_ips_col.update_one(
+                    {"email": email, "ip": ip}, 
+                    {"$set": {"status": "Accepted", "date": datetime.utcnow()}}, 
+                    upsert=True
+                )
+                
                 # if not authorized_ips_col.find_one({"email": email, "ip": ip}):
                 #     log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email)
                 #     flash("Blocked: New IP detected. Admin approval required.")
@@ -164,7 +170,7 @@ def login():
             return redirect(url_for("dashboard"))
         flash("Invalid credentials")
     return render_template("login.html")
-# ================= DASHBOARD (SYNCED) =================
+    # ================= DASHBOARD (SYNCED) =================
 
 @app.route("/dashboard")
 def dashboard():
