@@ -146,28 +146,27 @@ def login():
         email = request.form.get("email")
         password = request.form.get("password")
         user = users_col.find_one({"email": email})
+        
+        # Get the real IP address from Render's proxy
         ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
         if user and check_password_hash(user["password"], password):
-            # Admin Security Logic
+            # Admin Security Logic - NOW ACTIVE
             if email == os.getenv("ADMIN_EMAIL"):
-                # AUTO-ACCEPT LOGIC: While you have the bypass active, 
-                # this line will save your IP automatically.
-                authorized_ips_col.update_one(
-                    {"email": email, "ip": ip}, 
-                    {"$set": {"status": "Accepted", "date": datetime.utcnow()}}, 
-                    upsert=True
-                )
+                # This check now looks at the collection we just created
+                is_authorized = authorized_ips_col.find_one({"email": email, "ip": ip})
                 
-                # if not authorized_ips_col.find_one({"email": email, "ip": ip}):
-                #     log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email)
-                #     flash("Blocked: New IP detected. Admin approval required.")
-                #     return redirect(url_for("login"))
+                if not is_authorized:
+                    log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email)
+                    flash("Blocked: New IP detected. Access restricted to authorized networks.")
+                    return redirect(url_for("login"))
 
+            # Success: Set session data
             session["email"] = email
             session["role"] = user.get("role", "Employee")
             log_incident("LOGIN SUCCESS", "Low", email)
             return redirect(url_for("dashboard"))
+            
         flash("Invalid credentials")
     return render_template("login.html")
     # ================= DASHBOARD (SYNCED) =================
