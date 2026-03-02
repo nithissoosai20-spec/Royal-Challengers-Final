@@ -1,13 +1,11 @@
 import os
 import random
 import threading
-import logging
-import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from flask import (
     Flask, render_template, request, redirect,
-    url_for, session, flash, abort, jsonify
+    url_for, session, flash, abort
 )
 from flask_mail import Mail, Message
 from pymongo import MongoClient
@@ -16,25 +14,18 @@ from twilio.rest import Client
 from dotenv import load_dotenv
 from markupsafe import escape
 
-# ================= ENV & APP CONFIG =================
+# ================= CONFIG =================
 load_dotenv()
-
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 
-# ================= LOGGING =================
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)],
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
-
 # ================= DATABASE =================
-client = MongoClient(os.getenv("MONGO_URI"))
+client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
 db = client["royal_challengers_db"]
 users_col = db["users"]
-temp_users_col = db["temp_users"] 
+temp_users_col = db["temp_users"]
 logs_col = db["security_logs"]
+reports_col = db["user_reports"] # Separate collection for user-submitted reports
 blacklist_col = db["blacklist"]
 authorized_ips_col = db["authorized_ips"]
 
@@ -44,60 +35,29 @@ twilio_client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_TOKEN"))
 
 # ================= CORE SOC LOGIC =================
 
-def trigger_voice_alert(event):
-    """Voice alert for High severity incidents."""
-    try:
-        twilio_client.calls.create(
-            twiml=f'<Response><Say voice="alice">Security Alert: {event} detected on the portal.</Say></Response>',
-            to=os.getenv("MY_PHONE"),
-            from_=os.getenv("TWILIO_PHONE")
-        )
-    except Exception as e:
-        app.logger.error(f"Twilio Voice Alert Failed: {e}")
-
 def log_incident(event, severity, email="Anonymous", category="general"):
-    """Global logging with automated alerting."""
-    ip_addr = "N/A"
-    try:
-        if request:
-            ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
-    except Exception: 
-        pass
-
+    ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip() if request else "N/A"
     log_doc = {
         "timestamp": datetime.utcnow(),
         "event": event.upper(),
         "severity": severity,
         "category": category,
         "email": email,
-        "ip": ip_addr,
-        "path": request.path if request else "N/A"
+        "ip": ip_addr
     }
     logs_col.insert_one(log_doc)
-    
     if severity == "High":
         threading.Thread(target=trigger_voice_alert, args=(event,), daemon=True).start()
 
-# ================= GLOBAL MONITORING =================
+def trigger_voice_alert(event):
+    try:
+        twilio_client.calls.create(
+            twiml=f'<Response><Say voice="alice">Security Alert: {event} detected.</Say></Response>',
+            to=os.getenv("MY_PHONE"), from_=os.getenv("TWILIO_PHONE")
+        )
+    except: pass
 
-@app.before_request
-def security_monitor():
-    if request.path.startswith("/static"): 
-        return
-    
-    ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
-    
-    if blacklist_col.find_one({"ip": ip_addr}):
-        abort(403)
-    
-    hacker_paths = ["/.env", "/wp-admin", "/config.php", "/admin-hidden"]
-    if any(path in request.path for path in hacker_paths):
-        log_incident("SUSPICIOUS RECONNAISSANCE", "Medium", "Potential-Attacker", "security")
-        return "Resource Not Found", 404
-
-    log_incident(f"VISIT: {request.path}", "Low", session.get("email", "Guest"), "traffic")
-
-# ================= ROUTES =================
+# ================= NAVIGATION =================
 
 @app.route("/")
 def home(): return render_template("home.html")
@@ -108,68 +68,123 @@ def about(): return render_template("about.html")
 @app.route("/services")
 def services(): return render_template("services.html")
 
-@app.route("/contact")
-def contact(): return render_template("contact.html")
-
 @app.route("/careers")
 def careers(): return render_template("careers.html")
 
+@app.route("/contact")
+def contact(): return render_template("contact.html")
+
+# ================= REPORT INCIDENT (SYNCED) =================
+
+@app.route("/report-incident", methods=["GET", "POST"])
+def report_incident():
+    if "email" not in session: return redirect(url_for("login"))
+    
+    if request.method == "POST":
+        # Synced with your report_incident.html names
+        report_data = {
+            "incident_id": f"RC-{random.randint(1000, 9999)}",
+            "reporter": session['email'],
+            "type": escape(request.form.get("type")),
+            "severity": escape(request.form.get("severity")),
+            "message": escape(request.form.get("message")),
+            "timestamp": datetime.utcnow()
+        }
+        reports_col.insert_one(report_data)
+        log_incident(f"NEW REPORT: {report_data['type']}", "Medium", session['email'])
+        flash("Incident reported successfully.")
+        return redirect(url_for("dashboard"))
+        
+    return render_template("report_incident.html")
+
 # ================= AUTHENTICATION =================
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = escape(request.form.get("email"))
+        role = escape(request.form.get("role"))
+        
+        if users_col.find_one({"email": email}):
+            flash("User already exists.")
+            return redirect(url_for("register"))
+        
+        otp = str(random.randint(100000, 999999))
+        temp_users_col.update_one({"email": email}, {"$set": {
+            "name": escape(request.form.get("name")),
+            "password": generate_password_hash(request.form.get("password")),
+            "role": role,
+            "otp": otp, 
+            "createdAt": datetime.utcnow()
+        }}, upsert=True)
+        
+        msg = Message("SOC Portal OTP", sender=os.getenv("ADMIN_EMAIL"), recipients=[email])
+        msg.body = f"Your OTP is: {otp}"
+        mail.send(msg)
+        session["pending_email"] = email
+        return render_template("verify_otp.html")
+    return render_template("register.html")
+
+@app.route("/verify-otp", methods=["POST"])
+def verify_otp():
+    email = session.get("pending_email")
+    user_data = temp_users_col.find_one({"email": email})
+    if user_data and request.form.get("otp") == user_data["otp"]:
+        users_col.insert_one({
+            "name": user_data["name"], "email": user_data["email"], 
+            "password": user_data["password"], "role": user_data.get("role", "Employee")
+        })
+        temp_users_col.delete_one({"email": email})
+        flash("Registration successful!")
+        return redirect(url_for("login"))
+    flash("Invalid OTP")
+    return render_template("verify_otp.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
-    
     if request.method == "POST":
         email = request.form.get("email")
+        password = request.form.get("password")
         user = users_col.find_one({"email": email})
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
-        if user and check_password_hash(user["password"], request.form.get("password")):
-            # Admin "Accept IP" Check
+        if user and check_password_hash(user["password"], password):
+            # Admin "Accept IP" Security Check
             if email == os.getenv("ADMIN_EMAIL"):
-                is_authorized = authorized_ips_col.find_one({"email": email, "ip": ip})
-               # if not is_authorized:
-                    # Line 135 was here - Indentation is now fixed
-                #    log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email, "security")
-                 #   flash("Blocked: This IP is not 'Accepted' for Admin access. Approval required.")
-                  #  return redirect(url_for("login"))
+                if not authorized_ips_col.find_one({"email": email, "ip": ip}):
+                    log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email)
+                    flash("Blocked: New IP detected. Admin approval required.")
+                    return redirect(url_for("login"))
 
             session["email"] = email
-            log_incident("LOGIN SUCCESS", "Low", email, "auth")
+            session["role"] = user.get("role", "Employee")
+            log_incident("LOGIN SUCCESS", "Low", email)
             return redirect(url_for("dashboard"))
-        
-        else:
-            log_incident("LOGIN FAILED", "Medium", email, "auth")
-            flash("Invalid email or password.")
-
+        flash("Invalid credentials")
     return render_template("login.html")
 
-# ================= DASHBOARD & ADMIN =================
+# ================= DASHBOARD (SYNCED) =================
 
 @app.route("/dashboard")
 def dashboard():
-    if "email" not in session: 
-        return redirect(url_for("login"))
-    return render_template("dashboard.html")
+    if "email" not in session: return redirect(url_for("login"))
+    
+    # Fetching the TWO lists expected by your dashboard.html
+    user_reports = list(reports_col.find().sort("timestamp", -1))
+    logs = list(logs_col.find().sort("timestamp", -1).limit(10))
+    
+    return render_template("dashboard.html", user_reports=user_reports, logs=logs)
 
 @app.route("/admin/accept-ip")
 def accept_current_ip():
-    """Manual whitelist for the Admin's current IP."""
-    if "email" not in session or session["email"] != os.getenv("ADMIN_EMAIL"):
-        abort(403)
-        
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
-    authorized_ips_col.update_one(
-        {"email": session["email"], "ip": ip},
-        {"$set": {"status": "Accepted", "date": datetime.utcnow()}},
-        upsert=True
-    )
-    flash(f"IP {ip} has been Accepted successfully.")
+    if "email" in session and session["email"] == os.getenv("ADMIN_EMAIL"):
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+        authorized_ips_col.update_one({"email": session["email"], "ip": ip}, {"$set": {"status": "Accepted"}}, upsert=True)
+        flash(f"IP {ip} accepted.")
     return redirect(url_for("dashboard"))
 
 @app.route("/logout")
 def logout():
-    log_incident("LOGOUT", "Low", session.get("email"))
     session.clear()
     return redirect(url_for("home"))
 
