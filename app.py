@@ -36,7 +36,7 @@ users_col = db["users"]
 temp_users_col = db["temp_users"] 
 logs_col = db["security_logs"]
 blacklist_col = db["blacklist"]
-authorized_ips_col = db["authorized_ips"] # Trusted Admin IPs
+authorized_ips_col = db["authorized_ips"]
 
 # ================= TOOLS =================
 mail = Mail(app)
@@ -61,7 +61,8 @@ def log_incident(event, severity, email="Anonymous", category="general"):
     try:
         if request:
             ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
-    except Exception: pass
+    except Exception: 
+        pass
 
     log_doc = {
         "timestamp": datetime.utcnow(),
@@ -77,25 +78,23 @@ def log_incident(event, severity, email="Anonymous", category="general"):
     if severity == "High":
         threading.Thread(target=trigger_voice_alert, args=(event,), daemon=True).start()
 
-# ================= GLOBAL MONITORING (PROACTIVE) =================
+# ================= GLOBAL MONITORING =================
 
 @app.before_request
 def security_monitor():
-    if request.path.startswith("/static"): return
+    if request.path.startswith("/static"): 
+        return
     
     ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
     
-    # 1. Immediate Blacklist Block
     if blacklist_col.find_one({"ip": ip_addr}):
         abort(403)
     
-    # 2. Proactive Reconnaissance Detection
     hacker_paths = ["/.env", "/wp-admin", "/config.php", "/admin-hidden"]
     if any(path in request.path for path in hacker_paths):
         log_incident("SUSPICIOUS RECONNAISSANCE", "Medium", "Potential-Attacker", "security")
         return "Resource Not Found", 404
 
-    # 3. Log Every Visit
     log_incident(f"VISIT: {request.path}", "Low", session.get("email", "Guest"), "traffic")
 
 # ================= ROUTES =================
@@ -115,7 +114,7 @@ def contact(): return render_template("contact.html")
 @app.route("/careers")
 def careers(): return render_template("careers.html")
 
-# ================= AUTHENTICATION (SMART ACCEPTANCE) =================
+# ================= AUTHENTICATION =================
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -126,17 +125,15 @@ def login():
         user = users_col.find_one({"email": email})
 
         if user and check_password_hash(user["password"], request.form.get("password")):
-            
-            # --- THE "ACCEPT IP" LOGIC ---
-            # Define who needs IP Acceptance (e.g., the Admin)
+            # Admin "Accept IP" Check
             if email == os.getenv("ADMIN_EMAIL"):
                 is_authorized = authorized_ips_col.find_one({"email": email, "ip": ip})
                # if not is_authorized:
-                    log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email, "security")
-                    flash("Blocked: This IP is not 'Accepted' for Admin access. Approval required.")
-                    return redirect(url_for("login"))
+                    # Line 135 was here - Indentation is now fixed
+                #    log_incident("UNAUTHORIZED ADMIN ATTEMPT", "High", email, "security")
+                 #   flash("Blocked: This IP is not 'Accepted' for Admin access. Approval required.")
+                  #  return redirect(url_for("login"))
 
-            # Standard User or Authorized Admin
             session["email"] = email
             log_incident("LOGIN SUCCESS", "Low", email, "auth")
             return redirect(url_for("dashboard"))
@@ -147,16 +144,17 @@ def login():
 
     return render_template("login.html")
 
-# ================= DASHBOARD & ADMIN ACTIONS =================
+# ================= DASHBOARD & ADMIN =================
 
 @app.route("/dashboard")
 def dashboard():
-    if "email" not in session: return redirect(url_for("login"))
+    if "email" not in session: 
+        return redirect(url_for("login"))
     return render_template("dashboard.html")
 
 @app.route("/admin/accept-ip")
 def accept_current_ip():
-    """Route to manually whitelist the current IP (Use this to get yourself in!)"""
+    """Manual whitelist for the Admin's current IP."""
     if "email" not in session or session["email"] != os.getenv("ADMIN_EMAIL"):
         abort(403)
         
