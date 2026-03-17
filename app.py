@@ -134,7 +134,9 @@ def register():
                         mail.send(msg)
                         print("✅ MAIL SENT")
                     except Exception as e:
+                        import traceback
                         print("❌ MAIL ERROR:", e)
+                        print(traceback.format_exc())
 
             threading.Thread(target=send_async, args=(app, msg)).start()
 
