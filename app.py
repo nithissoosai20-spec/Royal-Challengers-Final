@@ -24,7 +24,7 @@ app.config.update(
     MAIL_USE_TLS=False,
     MAIL_USE_SSL=True,
     MAIL_USERNAME=os.getenv("ADMIN_EMAIL"),
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
+    MAIL_PASSWORD=os.getenv("EMAIL_PASS"),
     MAIL_DEFAULT_SENDER=os.getenv("ADMIN_EMAIL"),
     MAIL_TIMEOUT=10
 )
@@ -145,6 +145,39 @@ def register():
             return redirect(url_for("register"))
 
     return render_template("register.html")
+
+@app.route("/verify_otp", methods=["POST"])
+def verify_otp():
+    cols = get_db_collections()
+    if not cols:
+        flash("Database error")
+        return redirect(url_for("register"))
+
+    email = session.get("pending_email")
+    if not email:
+        flash("Session expired")
+        return redirect(url_for("register"))
+
+    otp = request.form.get("otp")
+    temp_user = cols["temp"].find_one({"email": email})
+
+    if not temp_user or temp_user["otp"] != otp:
+        flash("Invalid OTP")
+        return render_template("verify_otp.html")
+
+    cols["users"].insert_one({
+        "email": temp_user["email"],
+        "name": temp_user["name"],
+        "password": temp_user["password"],
+        "role": temp_user["role"],
+        "createdAt": datetime.now(timezone.utc)
+    })
+    cols["temp"].delete_one({"email": email})
+    session.pop("pending_email", None)
+    
+    flash("Registration successful! Please login.")
+    log_event("REGISTRATION_SUCCESS", "Low", email)
+    return redirect(url_for("login"))
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
