@@ -103,6 +103,14 @@ def dashboard():
     reports = list(cols["reports"].find().sort("timestamp", -1))
     logs = list(cols["logs"].find().sort("timestamp", -1).limit(20))
 
+    role = session.get("role")
+    if role == "Super Admin":
+        pending = list(cols["pending"].find().sort("createdAt", -1))
+    elif role == "Admin":
+        pending = list(cols["pending"].find({"role": "Security Analyst"}).sort("createdAt", -1))
+    else:
+        pending = []
+
     # Convert for JSON serialization + IST timezone
     from zoneinfo import ZoneInfo
     ist = ZoneInfo("Asia/Kolkata")
@@ -112,13 +120,6 @@ def dashboard():
             doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
         if "createdAt" in doc and hasattr(doc["createdAt"], "strftime"):
             doc["createdAt"] = doc["createdAt"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
-    role = session.get("role")
-    if role == "Super Admin":
-        pending = list(cols["pending"].find().sort("createdAt", -1))
-    elif role == "Admin":
-        pending = list(cols["pending"].find({"role": "Security Analyst"}).sort("createdAt", -1))
-    else:
-        pending = []
     return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending)
 
 @app.route("/register", methods=["GET", "POST"])
