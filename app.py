@@ -1,6 +1,5 @@
 import os
 import random
-import threading
 from datetime import datetime, timezone
 
 from flask import (
@@ -26,7 +25,7 @@ app.config.update(
     MAIL_USERNAME=os.getenv("ADMIN_EMAIL"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
     MAIL_DEFAULT_SENDER=os.getenv("ADMIN_EMAIL"),
-    MAIL_TIMEOUT=10   # 🔥 prevents hanging
+    MAIL_TIMEOUT=10  # 🔥 prevents hanging
 )
 mail = Mail(app)
 
@@ -51,18 +50,11 @@ def get_db_collections():
         print(f"❌ DB ERROR: {e}")
         return None
 
-# ================= EMAIL THREAD =================
-def send_email_async(app, msg):
-    with app.app_context():
-        try:
-            mail.send(msg)
-        except Exception as e:
-            print("❌ MAIL ERROR:", e)
-
 # ================= LOGGING =================
 def log_event(event, severity="Low", email="Anonymous"):
     cols = get_db_collections()
-    if not cols: return
+    if not cols:
+        return
     try:
         ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
         cols["logs"].insert_one({
@@ -109,13 +101,20 @@ def register():
                 return redirect(url_for("register"))
 
             email = escape(request.form.get("email"))
+            name = escape(request.form.get("name"))
+            password = request.form.get("password")
+
+            if not email or not name or not password:
+                flash("All fields are required")
+                return redirect(url_for("register"))
+
             otp = str(random.randint(100000, 999999))
 
             cols["temp"].update_one(
                 {"email": email},
                 {"$set": {
-                    "name": escape(request.form.get("name")),
-                    "password": generate_password_hash(request.form.get("password")),
+                    "name": name,
+                    "password": generate_password_hash(password),
                     "role": "Employee",
                     "otp": otp,
                     "createdAt": datetime.now(timezone.utc)
@@ -123,11 +122,17 @@ def register():
                 upsert=True
             )
 
-            # 🔥 EMAIL SEND (NON-BLOCKING)
+            # 🔥 SEND EMAIL (SYNC + SAFE)
             msg = Message("Your OTP", recipients=[email])
             msg.body = f"Your code: {otp}"
 
-            threading.Thread(target=send_email_async, args=(app, msg)).start()
+            try:
+                mail.send(msg)
+                print("✅ MAIL SENT")
+            except Exception as e:
+                print("❌ MAIL ERROR:", e)
+                flash("Email failed. Check configuration.")
+                return redirect(url_for("register"))
 
             session["pending_email"] = email
             return render_template("verify_otp.html")
