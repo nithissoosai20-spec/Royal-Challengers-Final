@@ -114,7 +114,7 @@
             <tbody>
                 {% for log in logs %}
                 <tr class="{{ 'row-high' if log.severity == 'High' else 'row-medium' if log.severity == 'Medium' else 'row-low' }}">
-                    <td>{{ log.timestamp.strftime('%d-%m %H:%M:%S') }}</td>
+                    <td>{{ log.timestamp }}</td>
                     <td>{{ log.event }}</td>
                     <td><span class="sev-badge {{ log.severity | lower }}">{{ log.severity }}</span></td>
                     <td>{{ log.email }}</td>

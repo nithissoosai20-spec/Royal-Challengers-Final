@@ -102,6 +102,16 @@ def dashboard():
 
     reports = list(cols["reports"].find().sort("timestamp", -1))
     logs = list(cols["logs"].find().sort("timestamp", -1).limit(20))
+
+    # Convert for JSON serialization + IST timezone
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    for doc in logs + reports + pending:
+        doc["_id"] = str(doc["_id"])
+        if "timestamp" in doc and hasattr(doc["timestamp"], "strftime"):
+            doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+        if "createdAt" in doc and hasattr(doc["createdAt"], "strftime"):
+            doc["createdAt"] = doc["createdAt"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
     role = session.get("role")
     if role == "Super Admin":
         pending = list(cols["pending"].find().sort("createdAt", -1))
