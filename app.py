@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import requests
 from datetime import datetime, timezone
 
 from flask import (
@@ -32,7 +33,28 @@ app.config.update(
 
 mail = Mail(app)
 
-# ================= DB HELPER =================
+def send_otp_email(to_email, otp):
+    def _send():
+        try:
+            response = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": os.getenv("BREVO_SMTP_KEY"),
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "sender": {"name": "Royal Challengers", "email": os.getenv("ADMIN_EMAIL")},
+                    "to": [{"email": to_email}],
+                    "subject": "Your OTP",
+                    "textContent": f"Your OTP code is: {otp}"
+                }
+            )
+            print("✅ MAIL SENT:", response.status_code, response.text)
+        except Exception as e:
+            print("❌ MAIL ERROR:", e)
+    threading.Thread(target=_send).start()
+
+
 def get_db_collections():
     try:
         uri = os.getenv("MONGO_URI")
@@ -125,20 +147,7 @@ def register():
                 upsert=True
             )
 
-            msg = Message("Your OTP", recipients=[email])
-            msg.body = f"Your code: {otp}"
-
-            def send_async(app, msg):
-                with app.app_context():
-                    try:
-                        mail.send(msg)
-                        print("✅ MAIL SENT")
-                    except Exception as e:
-                        import traceback
-                        print("❌ MAIL ERROR:", e)
-                        print(traceback.format_exc())
-
-            threading.Thread(target=send_async, args=(app, msg)).start()
+            send_otp_email(str(email), otp)
 
             session["pending_email"] = str(email)
             return render_template("verify_otp.html")
