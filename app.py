@@ -20,12 +20,12 @@ app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 
 # ================= MAIL CONFIG =================
 app.config.update(
-    MAIL_SERVER='smtp.gmail.com',
+    MAIL_SERVER='smtp-relay.brevo.com',
     MAIL_PORT=587,
     MAIL_USE_TLS=True,
     MAIL_USE_SSL=False,
     MAIL_USERNAME=os.getenv("ADMIN_EMAIL"),
-    MAIL_PASSWORD=os.getenv("EMAIL_PASS"),
+    MAIL_PASSWORD=os.getenv("BREVO_SMTP_KEY"),
     MAIL_DEFAULT_SENDER=os.getenv("ADMIN_EMAIL"),
     MAIL_TIMEOUT=10
 )
