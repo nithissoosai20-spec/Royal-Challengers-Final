@@ -138,8 +138,8 @@ def register():
 
             threading.Thread(target=send_async, args=(app, msg)).start()
 
-            session["pending_email"] = email
-            return render_template("verify_otp.html")
+            session["pending_email"] = str(email)
+            return render_template("verify_otp.html", otp_hint=otp)
 
         except Exception as e:
             print("❌ REGISTER ERROR:", e)
