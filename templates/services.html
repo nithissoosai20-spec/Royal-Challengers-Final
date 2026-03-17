@@ -1,20 +1,54 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-    <h2 style="color: #da251d;">Our Security Hub Services</h2>
-    <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">
-        <div style="flex: 1; min-width: 250px; border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
-            <h4 style="color: #c6a15b;">A01: Access Control</h4>
-            <p>Role-based access management ensuring sensitive SOC data is only visible to authorized analysts.</p>
+
+<section class="page-hero">
+    <h1>Our Services</h1>
+    <p>End-to-end cybersecurity solutions for modern enterprises.</p>
+</section>
+
+<section class="services-page">
+    <div class="services-grid">
+        <div class="service-card">
+            <div class="service-icon">🛡️</div>
+            <h4>Threat Intelligence</h4>
+            <p>Real-time threat feeds, dark web monitoring, and adversary profiling to stay ahead of attackers.</p>
         </div>
-        <div style="flex: 1; min-width: 250px; border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
-            <h4 style="color: #c6a15b;">A03: Injection Prevention</h4>
-            <p>Active sanitization of all user-generated reports to prevent Cross-Site Scripting (XSS).</p>
+        <div class="service-card">
+            <div class="service-icon">🔍</div>
+            <h4>Digital Forensics</h4>
+            <p>Post-incident investigation, evidence recovery, and chain-of-custody documentation for legal proceedings.</p>
         </div>
-        <div style="flex: 1; min-width: 250px; border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
-            <h4 style="color: #c6a15b;">A09: Monitoring</h4>
-            <p>Live forensic logging combined with automated voice calls for immediate incident response.</p>
+        <div class="service-card">
+            <div class="service-icon">🚨</div>
+            <h4>Incident Response</h4>
+            <p>24/7 rapid response team to contain, eradicate, and recover from security breaches within minutes.</p>
+        </div>
+        <div class="service-card">
+            <div class="service-icon">🔐</div>
+            <h4>Penetration Testing</h4>
+            <p>Simulated red team attacks to identify and remediate vulnerabilities before adversaries exploit them.</p>
+        </div>
+        <div class="service-card">
+            <div class="service-icon">☁️</div>
+            <h4>Cloud Security</h4>
+            <p>Securing AWS, Azure, and GCP environments with zero-trust architecture and continuous compliance monitoring.</p>
+        </div>
+        <div class="service-card">
+            <div class="service-icon">📋</div>
+            <h4>Compliance & Audit</h4>
+            <p>ISO 27001, SOC 2, GDPR, and HIPAA gap assessments, remediation planning, and audit support.</p>
+        </div>
+        <div class="service-card">
+            <div class="service-icon">🎓</div>
+            <h4>Security Awareness</h4>
+            <p>Phishing simulations and employee training programs to build a human firewall across your organization.</p>
+        </div>
+        <div class="service-card">
+            <div class="service-icon">🕵️</div>
+            <h4>SOC as a Service</h4>
+            <p>Fully managed Security Operations Center with dedicated analysts, SIEM, and real-time alerting.</p>
         </div>
     </div>
-</div>
+</section>
+
 {% endblock %}

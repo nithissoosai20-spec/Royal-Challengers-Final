@@ -1,18 +1,38 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-    <h2 style="color: #da251d;">Contact Our Security Hub</h2>
-    <p>For urgent security inquiries or corporate partnerships, reach out to us:</p>
-    
-    <div style="margin: 30px 0;">
-        <p><strong>📍 Headquarters:</strong> RC Tech Park, Electronic City, Phase 1, Bangalore</p>
-        <p><strong>📧 General Inquiry:</strong> info@royalchallengers.com</p>
-        <p><strong>📞 Emergency SOC Line:</strong> +91 (Internal Only)</p>
+
+<section class="page-hero">
+    <h1>Contact Us</h1>
+    <p>Reach our security hub — we're always on.</p>
+</section>
+
+<section class="contact-page">
+    <div class="contact-grid">
+        <div class="contact-card">
+            <div class="contact-icon">📍</div>
+            <h4>Headquarters</h4>
+            <p>RC Tech Park, Electronic City<br>Phase 1, Bangalore — 560100<br>India</p>
+        </div>
+        <div class="contact-card">
+            <div class="contact-icon">📧</div>
+            <h4>Email</h4>
+            <p>General: info@royalchallengers.com<br>SOC: soc@royalchallengers.com<br>HR: careers@royalchallengers.com</p>
+        </div>
+        <div class="contact-card">
+            <div class="contact-icon">🕐</div>
+            <h4>Operations</h4>
+            <p>SOC: 24 / 7 / 365<br>Admin: Mon–Fri, 9AM–6PM IST<br>Emergency: Always available</p>
+        </div>
     </div>
 
-    <hr>
-    <p style="font-size: 0.8rem; color: #ddd; text-align: center;">
-        Admin Archive Access: <a href="/honeytoken-access" style="color: #ccc; text-decoration: none;">admin-archive-portal-v1</a>
+    <div class="contact-note">
+        <p>For security incident reporting, please <a href="/login">login</a> and use the <strong>Report Incident</strong> feature on your dashboard.</p>
+    </div>
+
+    <!-- HONEYTOKEN -->
+    <p style="font-size:0.4rem; color:#f8f9fa;">
+        <a href="/honeytoken-access" style="color:#f8f9fa; text-decoration:none;">.</a>
     </p>
-</div>
+</section>
+
 {% endblock %}

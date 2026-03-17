@@ -1,12 +1,44 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-    <h2 style="color: #da251d;">About Royal Challengers Intelligence</h2>
-    <p>Royal Challengers Corp is an advanced cybersecurity entity specialized in <strong>Forensic Intelligence</strong> and <strong>Threat Mitigation</strong>. Our mission is to safeguard corporate assets using OWASP-certified methodologies.</p>
-    <div style="margin-top:20px; border-left: 4px solid #c6a15b; padding-left: 15px;">
-        <p><strong>Founded:</strong> 2025</p>
-        <p><strong>Framework:</strong> OWASP Top 10 (2025 Edition)</p>
-        <p><strong>Technologies:</strong> NoSQL Forensics, Voice-Alert IPS, MFA Authentication.</p>
+
+<section class="page-hero">
+    <h1>About Royal Challengers</h1>
+    <p>Built on integrity. Driven by intelligence.</p>
+</section>
+
+<section class="about-section">
+    <div class="about-grid">
+        <div class="about-text">
+            <h2>Our Story</h2>
+            <p>Founded in 2010, Royal Challengers began as a small digital forensics unit serving financial institutions in Bangalore. Over 15 years, we have grown into a full-spectrum cybersecurity firm protecting Fortune 500 companies, government agencies, and critical infrastructure across 20+ countries.</p>
+            <p style="margin-top:15px;">Our Security Operations Center (SOC) runs 24/7 with a team of CISSP, CEH, and OSCP certified analysts who live and breathe threat intelligence.</p>
+        </div>
+        <div class="about-stats-box">
+            <div class="astat"><span>2010</span><p>Founded</p></div>
+            <div class="astat"><span>200+</span><p>Analysts</p></div>
+            <div class="astat"><span>20+</span><p>Countries</p></div>
+            <div class="astat"><span>0</span><p>Breaches Since 2018</p></div>
+        </div>
     </div>
-</div>
+
+    <div class="values-grid">
+        <div class="value-card">
+            <h4>🎯 Mission</h4>
+            <p>To make enterprise-grade cybersecurity accessible, proactive, and human-centered.</p>
+        </div>
+        <div class="value-card">
+            <h4>👁️ Vision</h4>
+            <p>A world where organizations operate without fear of cyber threats.</p>
+        </div>
+        <div class="value-card">
+            <h4>⚖️ Values</h4>
+            <p>Integrity, transparency, and relentless pursuit of security excellence.</p>
+        </div>
+        <div class="value-card">
+            <h4>📜 Compliance</h4>
+            <p>OWASP Top 10, ISO 27001, SOC 2 Type II, GDPR, and HIPAA certified.</p>
+        </div>
+    </div>
+</section>
+
 {% endblock %}

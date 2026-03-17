@@ -1,17 +1,51 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-    <h2 style="color: #da251d;">Careers at Royal Challengers</h2>
-    <p>Join our elite team of cybersecurity experts. We are currently looking for talent in the following areas:</p>
-    
-    <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-top: 20px;">
-        <h4 style="color: #1a1a1b;">1. SOC Analyst (Level 1)</h4>
-        <p>Monitor real-time threats and handle incident response. Experience with Python/Flask preferred.</p>
-        
-        <h4 style="color: #1a1a1b;">2. Forensic Investigator</h4>
-        <p>Conduct post-incident analysis and maintain the chain of custody for digital evidence.</p>
+
+<section class="page-hero">
+    <h1>Careers at RC</h1>
+    <p>Join an elite team defending the digital world.</p>
+</section>
+
+<section class="careers-page">
+    <div class="careers-intro">
+        <h2>Why Work With Us?</h2>
+        <p>At Royal Challengers, you're not just an employee — you're a defender. We invest in our people with continuous training, certifications, and real-world threat exposure that no classroom can replicate.</p>
     </div>
 
-    <p style="margin-top: 30px;">To apply, please <a href="/register">Register as an Employee</a> and upload your credentials.</p>
-</div>
+    <div class="jobs-grid">
+        <div class="job-card">
+            <div class="job-header">
+                <h4>SOC Analyst — Level 1</h4>
+                <span class="job-tag">Entry Level</span>
+            </div>
+            <p>Monitor real-time security alerts, triage incidents, and escalate threats. Python/Flask experience preferred.</p>
+            <a href="/register" class="btn" style="margin-top:15px; font-size:0.85rem; padding:8px 18px;">Apply Now</a>
+        </div>
+        <div class="job-card">
+            <div class="job-header">
+                <h4>Senior Penetration Tester</h4>
+                <span class="job-tag">5+ Years</span>
+            </div>
+            <p>Lead red team engagements, develop custom exploits, and deliver executive-level vulnerability reports.</p>
+            <a href="/register" class="btn" style="margin-top:15px; font-size:0.85rem; padding:8px 18px;">Apply Now</a>
+        </div>
+        <div class="job-card">
+            <div class="job-header">
+                <h4>Digital Forensics Specialist</h4>
+                <span class="job-tag">3+ Years</span>
+            </div>
+            <p>Conduct post-incident forensic analysis, maintain evidence integrity, and support legal investigations.</p>
+            <a href="/register" class="btn" style="margin-top:15px; font-size:0.85rem; padding:8px 18px;">Apply Now</a>
+        </div>
+        <div class="job-card">
+            <div class="job-header">
+                <h4>Cloud Security Engineer</h4>
+                <span class="job-tag">4+ Years</span>
+            </div>
+            <p>Design and implement zero-trust cloud architectures across AWS, Azure, and GCP environments.</p>
+            <a href="/register" class="btn" style="margin-top:15px; font-size:0.85rem; padding:8px 18px;">Apply Now</a>
+        </div>
+    </div>
+</section>
+
 {% endblock %}

@@ -79,6 +79,7 @@ def log_event(event, severity="Low", email="Anonymous"):
     except:
         pass
 
+
 # ================= ROUTES =================
 
 @app.before_request
@@ -260,6 +261,45 @@ def login():
         flash("Invalid credentials")
 
     return render_template("login.html")
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+@app.route("/services")
+def services():
+    return render_template("services.html")
+
+@app.route("/careers")
+def careers():
+    return render_template("careers.html")
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+@app.route("/report-incident", methods=["GET", "POST"])
+def report_incident():
+    if "email" not in session:
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        cols = get_db_collections()
+        if not cols:
+            flash("Database error")
+            return redirect(url_for("report_incident"))
+        import uuid
+        cols["reports"].insert_one({
+            "incident_id": str(uuid.uuid4())[:8].upper(),
+            "reporter": session["email"],
+            "type": escape(request.form.get("type")),
+            "severity": escape(request.form.get("severity")),
+            "message": escape(request.form.get("message")),
+            "timestamp": datetime.now(timezone.utc)
+        })
+        log_event("INCIDENT_REPORTED", request.form.get("severity", "Low"), session["email"])
+        flash("Incident reported successfully.")
+        return redirect(url_for("dashboard"))
+    return render_template("report_incident.html")
 
 @app.route("/honeytoken-access")
 def honeytoken():
