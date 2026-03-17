@@ -1,62 +1,101 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-    <h2 style="color: #da251d;">SOC Dashboard (OWASP A09 Compliant)</h2>
-    <p>Identity: <strong>{{ session['email'] }}</strong> | Role: <strong>{{ session['role'] }}</strong></p>
+<div class="container" style="max-width:1100px;">
+    <h2 style="color:#da251d;">SOC Dashboard</h2>
+    <p>Logged in as: <strong>{{ session['email'] }}</strong> &nbsp;|&nbsp; Role: <strong style="color:#c6a15b;">{{ session['role'] }}</strong></p>
     <hr>
 
-    {% if session['role'] in ['Admin', 'Security Analysis'] %}
-    <h3 style="color: #c6a15b;">User Submitted Incident Reports</h3>
-    <table border="1" style="width:100%; border-collapse: collapse; margin-bottom: 40px; text-align: left;">
-        <thead style="background: #1a1a1b; color: #fff;">
+    <!-- PENDING APPROVALS: Super Admin sees all, Admin sees Security Analyst only -->
+    {% if pending_users %}
+    <h3 style="color:#da251d;">⏳ Pending Approval Requests</h3>
+    <table border="1" style="width:100%; border-collapse:collapse; margin-bottom:40px; text-align:left;">
+        <thead style="background:#1a1a1b; color:#fff;">
             <tr>
-                <th style="padding: 10px;">Incident ID</th>
-                <th style="padding: 10px;">Reporter</th>
-                <th style="padding: 10px;">Type</th>
-                <th style="padding: 10px;">Severity</th>
-                <th style="padding: 10px;">Description (Sanitized)</th>
+                <th style="padding:10px;">Name</th>
+                <th style="padding:10px;">Email</th>
+                <th style="padding:10px;">Role Requested</th>
+                <th style="padding:10px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in pending_users %}
+            <tr>
+                <td style="padding:10px;">{{ u.name }}</td>
+                <td style="padding:10px;">{{ u.email }}</td>
+                <td style="padding:10px;">{{ u.role }}</td>
+                <td style="padding:10px;">
+                    <form action="/approve_user/{{ u.email }}" method="POST" style="display:inline;">
+                        <button type="submit" class="btn" style="background:green; padding:6px 14px;">Approve</button>
+                    </form>
+                    <form action="/reject_user/{{ u.email }}" method="POST" style="display:inline;">
+                        <button type="submit" class="btn" style="background:#b71c1c; padding:6px 14px;">Reject</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- SOC CONTENT: Super Admin, Admin, Security Analyst -->
+    {% if session['role'] in ['Super Admin', 'Admin', 'Security Analyst'] %}
+
+    <h3 style="color:#c6a15b;">📋 Incident Reports</h3>
+    <table border="1" style="width:100%; border-collapse:collapse; margin-bottom:40px; text-align:left;">
+        <thead style="background:#1a1a1b; color:#fff;">
+            <tr>
+                <th style="padding:10px;">Incident ID</th>
+                <th style="padding:10px;">Reporter</th>
+                <th style="padding:10px;">Type</th>
+                <th style="padding:10px;">Severity</th>
+                <th style="padding:10px;">Description</th>
             </tr>
         </thead>
         <tbody>
             {% for report in user_reports %}
             <tr>
-                <td style="padding: 10px;">{{ report.incident_id }}</td>
-                <td style="padding: 10px;">{{ report.reporter }}</td>
-                <td style="padding: 10px;">{{ report.type }}</td>
-                <td style="padding: 10px; font-weight:bold;">{{ report.severity }}</td>
-                <td style="padding: 10px;">{{ report.message }}</td>
+                <td style="padding:10px;">{{ report.incident_id }}</td>
+                <td style="padding:10px;">{{ report.reporter }}</td>
+                <td style="padding:10px;">{{ report.type }}</td>
+                <td style="padding:10px; font-weight:bold;">{{ report.severity }}</td>
+                <td style="padding:10px;">{{ report.message }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <h3 style="color: #c6a15b;">System Security Logs (Forensics)</h3>
-    <table border="1" style="width:100%; border-collapse: collapse; text-align: left;">
-        <thead style="background: #1a1a1b; color: #fff;">
+    <h3 style="color:#c6a15b;">🔒 Security Logs</h3>
+    <table border="1" style="width:100%; border-collapse:collapse; text-align:left;">
+        <thead style="background:#1a1a1b; color:#fff;">
             <tr>
-                <th style="padding: 10px;">Time</th>
-                <th style="padding: 10px;">Event</th>
-                <th style="padding: 10px;">Severity</th>
-                <th style="padding: 10px;">IP Address</th>
+                <th style="padding:10px;">Time</th>
+                <th style="padding:10px;">Event</th>
+                <th style="padding:10px;">Severity</th>
+                <th style="padding:10px;">Email</th>
+                <th style="padding:10px;">IP Address</th>
             </tr>
         </thead>
         <tbody>
             {% for log in logs %}
-            <tr style="background-color: {{ '#ffcccc' if log.severity == 'High' else '#fff4cc' if log.severity == 'Medium' else '#e2f0d9' }};">
-                <td style="padding: 10px;">{{ log.timestamp.strftime('%H:%M:%S') }}</td>
-                <td style="padding: 10px;">{{ log.event }}</td>
-                <td style="padding: 10px;">{{ log.severity }}</td>
-                <td style="padding: 10px;">{{ log.ip }}</td>
+            <tr style="background-color:{{ '#ffcccc' if log.severity == 'High' else '#fff4cc' if log.severity == 'Medium' else '#e2f0d9' }};">
+                <td style="padding:10px;">{{ log.timestamp.strftime('%d-%m %H:%M:%S') }}</td>
+                <td style="padding:10px;">{{ log.event }}</td>
+                <td style="padding:10px;">{{ log.severity }}</td>
+                <td style="padding:10px;">{{ log.email }}</td>
+                <td style="padding:10px;">{{ log.ip }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+
     {% else %}
-    <div style="background: #e2f0d9; padding: 20px; border-radius: 10px; text-align:center;">
-        <h3>Employee View</h3>
+    <!-- EMPLOYEE VIEW -->
+    <div style="background:#e2f0d9; padding:30px; border-radius:10px; text-align:center;">
+        <h3>👋 Welcome, {{ session['email'] }}</h3>
         <p>No high-risk alerts detected for your workstation.</p>
-        <a href="/report-incident" class="btn">Report a New Issue</a>
+        <a href="/report-incident" class="btn">Report a New Incident</a>
     </div>
     {% endif %}
+
 </div>
 {% endblock %}

@@ -8,7 +8,6 @@ from flask import (
     Flask, render_template, request, redirect,
     url_for, session, flash
 )
-from flask_mail import Mail, Message
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -19,21 +18,8 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 
-# ================= MAIL CONFIG =================
-app.config.update(
-    MAIL_SERVER='smtp-relay.brevo.com',
-    MAIL_PORT=587,
-    MAIL_USE_TLS=True,
-    MAIL_USE_SSL=False,
-    MAIL_USERNAME=os.getenv("ADMIN_EMAIL"),
-    MAIL_PASSWORD=os.getenv("BREVO_SMTP_KEY"),
-    MAIL_DEFAULT_SENDER=os.getenv("ADMIN_EMAIL"),
-    MAIL_TIMEOUT=10
-)
-
-mail = Mail(app)
-
-def send_otp_email(to_email, otp):
+# ================= EMAIL VIA BREVO HTTP API =================
+def send_email(to_email, subject, body):
     def _send():
         try:
             response = requests.post(
@@ -45,8 +31,8 @@ def send_otp_email(to_email, otp):
                 json={
                     "sender": {"name": "Royal Challengers", "email": os.getenv("ADMIN_EMAIL")},
                     "to": [{"email": to_email}],
-                    "subject": "Your OTP",
-                    "textContent": f"Your OTP code is: {otp}"
+                    "subject": subject,
+                    "textContent": body
                 }
             )
             print("✅ MAIL SENT:", response.status_code, response.text)
@@ -54,7 +40,7 @@ def send_otp_email(to_email, otp):
             print("❌ MAIL ERROR:", e)
     threading.Thread(target=_send).start()
 
-
+# ================= DB HELPER =================
 def get_db_collections():
     try:
         uri = os.getenv("MONGO_URI")
@@ -67,6 +53,7 @@ def get_db_collections():
         return {
             "users": db["users"],
             "temp": db["temp_users"],
+            "pending": db["pending_users"],
             "logs": db["security_logs"],
             "reports": db["user_reports"],
             "ips": db["authorized_ips"]
@@ -114,7 +101,14 @@ def dashboard():
 
     reports = list(cols["reports"].find().sort("timestamp", -1))
     logs = list(cols["logs"].find().sort("timestamp", -1).limit(20))
-    return render_template("dashboard.html", user_reports=reports, logs=logs)
+    role = session.get("role")
+    if role == "Super Admin":
+        pending = list(cols["pending"].find().sort("createdAt", -1))
+    elif role == "Admin":
+        pending = list(cols["pending"].find({"role": "Security Analyst"}).sort("createdAt", -1))
+    else:
+        pending = []
+    return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -128,8 +122,9 @@ def register():
             email = escape(request.form.get("email"))
             name = escape(request.form.get("name"))
             password = request.form.get("password")
+            role = escape(request.form.get("role", "Employee"))
 
-            if not email or not name or not password:
+            if not email or not name or not password or not role:
                 flash("All fields are required")
                 return redirect(url_for("register"))
 
@@ -140,15 +135,14 @@ def register():
                 {"$set": {
                     "name": name,
                     "password": generate_password_hash(password),
-                    "role": "Employee",
+                    "role": role,
                     "otp": otp,
                     "createdAt": datetime.now(timezone.utc)
                 }},
                 upsert=True
             )
 
-            send_otp_email(str(email), otp)
-
+            send_email(str(email), "Your OTP", f"Your OTP code is: {otp}")
             session["pending_email"] = str(email)
             return render_template("verify_otp.html")
 
@@ -178,19 +172,71 @@ def verify_otp():
         flash("Invalid OTP")
         return render_template("verify_otp.html")
 
+    role = temp_user["role"]
+    cols["temp"].delete_one({"email": email})
+    session.pop("pending_email", None)
+
+    if role in ["Security Analyst", "Admin", "Super Admin"]:
+        cols["pending"].insert_one({
+            "email": temp_user["email"],
+            "name": temp_user["name"],
+            "password": temp_user["password"],
+            "role": role,
+            "createdAt": datetime.now(timezone.utc)
+        })
+        send_email(
+            os.getenv("ADMIN_EMAIL"),
+            "New Approval Request",
+            f"New {role} registration from {temp_user['email']} is awaiting your approval. Login to dashboard to approve or reject."
+        )
+        log_event("PENDING_APPROVAL", "Medium", email)
+        flash("OTP verified! Your account is pending admin approval. You will be notified once approved.")
+        return redirect(url_for("login"))
+
     cols["users"].insert_one({
         "email": temp_user["email"],
         "name": temp_user["name"],
         "password": temp_user["password"],
-        "role": temp_user["role"],
+        "role": role,
         "createdAt": datetime.now(timezone.utc)
     })
-    cols["temp"].delete_one({"email": email})
-    session.pop("pending_email", None)
-    
-    flash("Registration successful! Please login.")
     log_event("REGISTRATION_SUCCESS", "Low", email)
+    flash("Registration successful! Please login.")
     return redirect(url_for("login"))
+
+@app.route("/approve_user/<user_email>", methods=["POST"])
+def approve_user(user_email):
+    if session.get("role") not in ["Super Admin", "Admin"]:
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    pending = cols["pending"].find_one({"email": user_email})
+    if pending:
+        cols["users"].insert_one({
+            "email": pending["email"],
+            "name": pending["name"],
+            "password": pending["password"],
+            "role": pending["role"],
+            "createdAt": datetime.now(timezone.utc)
+        })
+        cols["pending"].delete_one({"email": user_email})
+        send_email(pending["email"], "Account Approved", f"Your {pending['role']} account has been approved! You can now login.")
+        log_event("USER_APPROVED", "Medium", user_email)
+        flash(f"{user_email} approved successfully.")
+    return redirect(url_for("dashboard"))
+
+@app.route("/reject_user/<user_email>", methods=["POST"])
+def reject_user(user_email):
+    if session.get("role") not in ["Super Admin", "Admin"]:
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    cols["pending"].delete_one({"email": user_email})
+    log_event("USER_REJECTED", "Medium", user_email)
+    flash(f"{user_email} rejected.")
+    return redirect(url_for("dashboard"))
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -207,12 +253,18 @@ def login():
 
         if user and check_password_hash(user["password"], password):
             session["email"] = email
+            session["role"] = user.get("role", "Employee")
             log_event("LOGIN_SUCCESS", "Low", email)
             return redirect(url_for("dashboard"))
 
         flash("Invalid credentials")
 
     return render_template("login.html")
+
+@app.route("/honeytoken-access")
+def honeytoken():
+    log_event("HONEYTOKEN_TRIGGERED", "High", session.get("email", "Anonymous"))
+    return redirect(url_for("login"))
 
 @app.route("/logout")
 def logout():

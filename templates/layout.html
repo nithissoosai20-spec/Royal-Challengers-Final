@@ -3,28 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Royal Challengers Corp | Secure Portal</title>
+    <title>Royal Challengers Corp | Cybersecurity Intelligence</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <nav>
-        <div class="nav-brand">RC CORP</div>
+        <div class="nav-brand">
+            <span style="color:#da251d;">RC</span><span style="color:#c6a15b;">CORP</span>
+            <span style="font-size:0.65rem; color:#aaa; display:block; letter-spacing:2px;">CYBERSECURITY INTELLIGENCE</span>
+        </div>
         <div class="nav-links">
             <a href="/">Home</a>
             <a href="/about">About</a>
             <a href="/services">Services</a>
             <a href="/careers">Careers</a>
             <a href="/contact">Contact</a>
-            
+
             {% if session.get('email') %}
                 <a href="/report-incident">Report Incident</a>
-                {% if session.get('role') in ['Admin', 'Security Analysis'] %}
-                    <a href="/dashboard" style="color: #c6a15b; font-weight: bold;">SOC DASHBOARD</a>
+                {% if session.get('role') in ['Super Admin', 'Admin', 'Security Analyst'] %}
+                    <a href="/dashboard" style="color:#c6a15b; font-weight:bold;">SOC DASHBOARD</a>
                 {% endif %}
+                <span style="color:#aaa; font-size:0.8rem; margin: 0 10px;">{{ session.get('role') }}</span>
                 <a href="/logout" class="logout-btn">Logout</a>
             {% else %}
                 <a href="/login">Login</a>
-                <a href="/register">Register</a>
+                <a href="/register" class="btn" style="padding:8px 16px; font-size:0.85rem;">Register</a>
             {% endif %}
         </div>
     </nav>
@@ -43,8 +47,21 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer style="text-align: center; padding: 20px; color: #666; font-size: 0.8rem;">
-        &copy; 2026 Royal Challengers Intelligence Division. All Rights Reserved.
+    <footer>
+        <div class="footer-inner">
+            <div>
+                <strong style="color:#c6a15b;">RC CORP</strong>
+                <p style="color:#aaa; font-size:0.8rem; margin-top:5px;">Defending Enterprises Since 2010</p>
+            </div>
+            <div style="font-size:0.8rem; color:#aaa;">
+                <p>support@royalchallengers.com</p>
+                <p>RC Tech Park, Bangalore</p>
+            </div>
+            <div style="font-size:0.8rem; color:#aaa;">
+                <p>&copy; 2026 Royal Challengers Intelligence Division</p>
+                <p>All Rights Reserved.</p>
+            </div>
+        </div>
     </footer>
 </body>
 </html>

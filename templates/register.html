@@ -1,10 +1,8 @@
 {% extends "layout.html" %}
 {% block content %}
-
 <div class="container">
-    <h2>Royal Challengers Registration</h2>
+    <h2>Apply for Access</h2>
 
-    <!-- Flash messages -->
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <ul class="flash-messages">
@@ -16,50 +14,22 @@
     {% endwith %}
 
     <form method="POST" action="{{ url_for('register') }}">
-        <input
-            type="text"
-            name="name"
-            placeholder="Full Name"
-            required
-        >
+        <input type="text" name="name" placeholder="Full Name" required>
+        <input type="email" name="email" placeholder="Corporate Email" required>
+        <input type="password" name="password" placeholder="Password" required>
 
-        <input
-            type="email"
-            name="email"
-            placeholder="Corporate Email"
-            required
-        >
-
-        <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            required
-        >
-
-        <label for="role">Select Your Department:</label>
+        <label for="role">Select Your Role:</label>
         <select name="role" id="role" required>
             <option value="">-- Select Role --</option>
-            <option value="Employee">
-                Employee (Email OTP Verification)
-            </option>
-            <option value="Security Analyst">
-                Security Analyst (OTP + Admin Approval)
-            </option>
-            <option value="Admin">
-                System Administrator (OTP + Admin Approval)
-            </option>
+            <option value="Employee">Employee (Email OTP Verification)</option>
+            <option value="Security Analyst">Security Analyst (OTP + Admin Approval)</option>
+            <option value="Admin">Admin / Asst. Manager (OTP + Super Admin Approval)</option>
+            <option value="Super Admin">Super Admin / Manager (OTP + Manual Approval)</option>
         </select>
 
-        <button type="submit" class="btn">
-            Apply for Access
-        </button>
+        <button type="submit" class="btn">Apply for Access</button>
     </form>
 
-    <p class="login-link">
-        Already have access?
-        <a href="{{ url_for('login') }}">Login here</a>
-    </p>
+    <p class="login-link">Already have access? <a href="{{ url_for('login') }}">Login here</a></p>
 </div>
-
 {% endblock %}
