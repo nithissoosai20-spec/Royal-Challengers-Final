@@ -27,7 +27,9 @@ app.config.update(
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
     MAIL_DEFAULT_SENDER=os.getenv("ADMIN_EMAIL"),
     MAIL_TIMEOUT=10
-)mail = Mail(app)
+)
+
+mail = Mail(app)
 
 # ================= DB HELPER =================
 def get_db_collections():
