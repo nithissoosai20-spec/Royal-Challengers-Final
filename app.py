@@ -40,6 +40,39 @@ def send_email(to_email, subject, body):
             print("❌ MAIL ERROR:", e)
     threading.Thread(target=_send).start()
 
+def send_alert_emails(subject, body):
+    """Send email to all Super Admin, Admin, Security Analyst in DB."""
+    def _send():
+        try:
+            cols = get_db_collections()
+            if not cols:
+                return
+            users = cols["users"].find(
+                {"role": {"$in": ["Super Admin", "Admin", "Security Analyst"]}},
+                {"email": 1, "_id": 0}
+            )
+            for u in users:
+                send_email(u["email"], subject, body)
+        except Exception as e:
+            print("❌ ALERT EMAIL ERROR:", e)
+    threading.Thread(target=_send).start()
+
+def send_voice_alert(message):
+    """Twilio voice call to Super Admin only."""
+    def _call():
+        try:
+            from twilio.rest import Client
+            client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_TOKEN"))
+            client.calls.create(
+                to=os.getenv("MY_PHONE"),
+                from_=os.getenv("TWILIO_PHONE"),
+                twiml=f"<Response><Say voice='alice'>{message}</Say></Response>"
+            )
+            print("✅ VOICE ALERT SENT")
+        except Exception as e:
+            print("❌ VOICE ALERT ERROR:", e)
+    threading.Thread(target=_call).start()
+
 # ================= DB HELPER =================
 def get_db_collections():
     try:
@@ -307,14 +340,34 @@ def report_incident():
             "message": escape(request.form.get("message")),
             "timestamp": datetime.now(timezone.utc)
         })
-        log_event("INCIDENT_REPORTED", request.form.get("severity", "Low"), session["email"])
+        severity = request.form.get("severity", "Low")
+        log_event("INCIDENT_REPORTED", severity, session["email"])
+        if severity == "Critical":
+            inc_type = request.form.get("type", "Unknown")
+            reporter = session["email"]
+            send_alert_emails(
+                "🚨 Critical Incident Reported!",
+                f"A Critical severity incident has been reported.\nType: {inc_type}\nReporter: {reporter}\nCheck the SOC dashboard immediately."
+            )
+            send_voice_alert(
+                f"Alert! A critical incident of type {inc_type} has been reported by {reporter} on the Royal Challengers system. Please check the dashboard immediately."
+            )
         flash("Incident reported successfully.")
         return redirect(url_for("dashboard"))
     return render_template("report_incident.html")
 
 @app.route("/honeytoken-access")
 def honeytoken():
-    log_event("HONEYTOKEN_TRIGGERED", "High", session.get("email", "Anonymous"))
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    triggered_by = session.get("email", "Anonymous")
+    log_event("HONEYTOKEN_TRIGGERED", "High", triggered_by)
+    send_alert_emails(
+        "🚨 Honeytoken Triggered!",
+        f"Someone accessed the hidden honeytoken link.\nUser: {triggered_by}\nIP: {ip}"
+    )
+    send_voice_alert(
+        f"Alert! Honeytoken was triggered on the Royal Challengers system by {triggered_by} from IP {ip}. Immediate investigation required."
+    )
     return redirect(url_for("login"))
 
 @app.route("/logout")
