@@ -1,5 +1,6 @@
 import os
 import random
+import threading
 from datetime import datetime, timezone
 
 from flask import (
@@ -124,17 +125,18 @@ def register():
                 upsert=True
             )
 
-            # 🔥 SEND EMAIL (SYNC + SAFE)
             msg = Message("Your OTP", recipients=[email])
             msg.body = f"Your code: {otp}"
 
-            try:
-                mail.send(msg)
-                print("✅ MAIL SENT")
-            except Exception as e:
-                print("❌ MAIL ERROR:", e)
-                flash("Email failed. Check configuration.")
-                return redirect(url_for("register"))
+            def send_async(app, msg):
+                with app.app_context():
+                    try:
+                        mail.send(msg)
+                        print("✅ MAIL SENT")
+                    except Exception as e:
+                        print("❌ MAIL ERROR:", e)
+
+            threading.Thread(target=send_async, args=(app, msg)).start()
 
             session["pending_email"] = email
             return render_template("verify_otp.html")
