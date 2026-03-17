@@ -21,7 +21,7 @@ app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 # ================= MAIL CONFIG =================
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
-    MAIL_PORT=2525,
+    MAIL_PORT=587,
     MAIL_USE_TLS=True,
     MAIL_USE_SSL=False,
     MAIL_USERNAME=os.getenv("ADMIN_EMAIL"),
@@ -139,7 +139,7 @@ def register():
             threading.Thread(target=send_async, args=(app, msg)).start()
 
             session["pending_email"] = str(email)
-            return render_template("verify_otp.html", otp_hint=otp)
+            return render_template("verify_otp.html")
 
         except Exception as e:
             print("❌ REGISTER ERROR:", e)

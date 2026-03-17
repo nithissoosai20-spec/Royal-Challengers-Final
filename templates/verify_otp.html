@@ -3,9 +3,6 @@
 <div class="container">
     <h2>Verify Your Identity</h2>
     <p>Enter the 6-digit code sent to your email.</p>
-    {% if otp_hint %}
-    <p style="color:orange;">⚠️ Email delivery unavailable. Your OTP: <strong>{{ otp_hint }}</strong></p>
-    {% endif %}
     
     <form action="/verify_otp" method="POST">
         <input type="text" name="otp" placeholder="Enter OTP" required maxlength="6">
