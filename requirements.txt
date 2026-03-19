@@ -6,3 +6,6 @@ twilio
 Flask-Mail
 python-dotenv
 markupsafe
+reportlab
+python-docx
+requests

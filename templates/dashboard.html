@@ -9,6 +9,14 @@
             <h2>🛡️ SOC Dashboard</h2>
             <p style="color:#aaa; font-size:0.85rem;">{{ session['email'] }} &nbsp;|&nbsp; <span style="color:#c6a15b;">{{ session['role'] }}</span></p>
         </div>
+        {% if session['role'] in ['Super Admin', 'Admin', 'Security Analyst'] %}
+        <div class="export-btns">
+            <span style="color:#aaa; font-size:0.78rem; margin-right:8px;">Export:</span>
+            <a href="/export/csv" class="export-btn csv">⬇ CSV</a>
+            <a href="/export/pdf" class="export-btn pdf">⬇ PDF</a>
+            <a href="/export/word" class="export-btn word">⬇ Word</a>
+        </div>
+        {% endif %}
     </div>
 
     <!-- STAT CARDS -->

@@ -445,6 +445,128 @@ def unblock_ip(ip):
     flash(f"IP {ip} has been unblocked.")
     return redirect(url_for("dashboard"))
 
+@app.route("/export/<fmt>")
+def export_soc(fmt):
+    if session.get("role") not in ["Super Admin", "Admin", "Security Analyst"]:
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    logs = list(cols["logs"].find().sort("timestamp", -1).limit(100))
+    reports = list(cols["reports"].find().sort("timestamp", -1))
+    for doc in logs + reports:
+        doc["_id"] = str(doc["_id"])
+        if "timestamp" in doc and hasattr(doc["timestamp"], "strftime"):
+            doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+
+    if fmt == "csv":
+        import csv, io
+        from flask import Response
+        output = io.StringIO()
+        w = csv.writer(output)
+        w.writerow(["=== SECURITY LOGS ==="])
+        w.writerow(["Timestamp", "Event", "Severity", "User", "IP"])
+        for l in logs:
+            w.writerow([l.get("timestamp"), l.get("event"), l.get("severity"), l.get("email"), l.get("ip")])
+        w.writerow([])
+        w.writerow(["=== INCIDENT REPORTS ==="])
+        w.writerow(["ID", "Reporter", "Type", "Severity", "Message", "Timestamp"])
+        for r in reports:
+            w.writerow([r.get("incident_id"), r.get("reporter"), r.get("type"), r.get("severity"), r.get("message"), r.get("timestamp")])
+        output.seek(0)
+        return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=soc_report.csv"})
+
+    elif fmt == "pdf":
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+        import io
+        from flask import Response
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4)
+        styles = getSampleStyleSheet()
+        elems = []
+        elems.append(Paragraph("Royal Challengers SOC Report", styles["Title"]))
+        elems.append(Paragraph(f"Exported by: {session['email']} | Role: {session['role']}", styles["Normal"]))
+        elems.append(Spacer(1, 12))
+        elems.append(Paragraph("Security Logs", styles["Heading2"]))
+        log_data = [["Timestamp", "Event", "Severity", "User", "IP"]]
+        for l in logs:
+            log_data.append([l.get("timestamp",""), l.get("event",""), l.get("severity",""), l.get("email",""), l.get("ip","")])
+        t = Table(log_data, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1a1a1b")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.HexColor("#c6a15b")),
+            ("FONTSIZE", (0,0), (-1,-1), 7),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f5f5f5")]),
+        ]))
+        elems.append(t)
+        elems.append(Spacer(1, 16))
+        elems.append(Paragraph("Incident Reports", styles["Heading2"]))
+        rep_data = [["ID", "Reporter", "Type", "Severity", "Message", "Timestamp"]]
+        for r in reports:
+            rep_data.append([r.get("incident_id",""), r.get("reporter",""), r.get("type",""), r.get("severity",""), r.get("message","")[:40], r.get("timestamp","")])
+        t2 = Table(rep_data, repeatRows=1)
+        t2.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#da251d")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTSIZE", (0,0), (-1,-1), 7),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f5f5f5")]),
+        ]))
+        elems.append(t2)
+        doc.build(elems)
+        buf.seek(0)
+        return Response(buf, mimetype="application/pdf", headers={"Content-Disposition": "attachment;filename=soc_report.pdf"})
+
+    elif fmt == "word":
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        import io
+        from flask import Response
+        document = Document()
+        document.add_heading("Royal Challengers SOC Report", 0)
+        document.add_paragraph(f"Exported by: {session['email']} | Role: {session['role']}")
+        document.add_heading("Security Logs", level=1)
+        tbl = document.add_table(rows=1, cols=5)
+        tbl.style = "Table Grid"
+        hdr = tbl.rows[0].cells
+        for i, h in enumerate(["Timestamp", "Event", "Severity", "User", "IP"]):
+            hdr[i].text = h
+        for l in logs:
+            row = tbl.add_row().cells
+            row[0].text = str(l.get("timestamp",""))
+            row[1].text = str(l.get("event",""))
+            row[2].text = str(l.get("severity",""))
+            row[3].text = str(l.get("email",""))
+            row[4].text = str(l.get("ip",""))
+        document.add_heading("Incident Reports", level=1)
+        tbl2 = document.add_table(rows=1, cols=6)
+        tbl2.style = "Table Grid"
+        hdr2 = tbl2.rows[0].cells
+        for i, h in enumerate(["ID", "Reporter", "Type", "Severity", "Message", "Timestamp"]):
+            hdr2[i].text = h
+        for r in reports:
+            row = tbl2.add_row().cells
+            row[0].text = str(r.get("incident_id",""))
+            row[1].text = str(r.get("reporter",""))
+            row[2].text = str(r.get("type",""))
+            row[3].text = str(r.get("severity",""))
+            row[4].text = str(r.get("message",""))
+            row[5].text = str(r.get("timestamp",""))
+        buf = io.BytesIO()
+        document.save(buf)
+        buf.seek(0)
+        return Response(buf, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": "attachment;filename=soc_report.docx"})
+
+    return "Invalid format", 400
+
 @app.route("/logout")
 def logout():
     session.clear()
