@@ -18,6 +18,31 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
 
+# Single persistent MongoDB connection
+_mongo_client = None
+def get_db_collections():
+    global _mongo_client
+    try:
+        uri = os.getenv("MONGO_URI")
+        if not uri:
+            return None
+        if _mongo_client is None:
+            _mongo_client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        db = _mongo_client["royal_challengers_db"]
+        return {
+            "users": db["users"],
+            "temp": db["temp_users"],
+            "pending": db["pending_users"],
+            "logs": db["security_logs"],
+            "reports": db["user_reports"],
+            "ips": db["authorized_ips"],
+            "blocked": db["blocked_ips"]
+        }
+    except Exception as e:
+        print(f"❌ DB ERROR: {e}")
+        _mongo_client = None
+        return None
+
 # ================= EMAIL VIA BREVO HTTP API =================
 def send_email(to_email, subject, body):
     def _send():
@@ -72,29 +97,6 @@ def send_voice_alert(message):
         except Exception as e:
             print("❌ VOICE ALERT ERROR:", e)
     threading.Thread(target=_call).start()
-
-# ================= DB HELPER =================
-def get_db_collections():
-    try:
-        uri = os.getenv("MONGO_URI")
-        if not uri:
-            print("❌ ERROR: MONGO_URI missing!")
-            return None
-        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-        db = client["royal_challengers_db"]
-        client.admin.command('ping')
-        return {
-            "users": db["users"],
-            "temp": db["temp_users"],
-            "pending": db["pending_users"],
-            "logs": db["security_logs"],
-            "reports": db["user_reports"],
-            "ips": db["authorized_ips"],
-            "blocked": db["blocked_ips"]
-        }
-    except Exception as e:
-        print(f"❌ DB ERROR: {e}")
-        return None
 
 # ================= IP BLOCKING =================
 def get_request_ip():
