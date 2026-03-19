@@ -89,11 +89,39 @@ def get_db_collections():
             "pending": db["pending_users"],
             "logs": db["security_logs"],
             "reports": db["user_reports"],
-            "ips": db["authorized_ips"]
+            "ips": db["authorized_ips"],
+            "blocked": db["blocked_ips"]
         }
     except Exception as e:
         print(f"❌ DB ERROR: {e}")
         return None
+
+# ================= IP BLOCKING =================
+def get_request_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+
+def block_ip(ip, reason):
+    try:
+        cols = get_db_collections()
+        if not cols:
+            return
+        cols["blocked"].update_one(
+            {"ip": ip},
+            {"$set": {"ip": ip, "reason": reason, "blocked_at": datetime.now(timezone.utc)}},
+            upsert=True
+        )
+        print(f"🚫 IP BLOCKED: {ip}")
+    except Exception as e:
+        print(f"❌ BLOCK IP ERROR: {e}")
+
+def is_ip_blocked(ip):
+    try:
+        cols = get_db_collections()
+        if not cols:
+            return False
+        return cols["blocked"].find_one({"ip": ip}) is not None
+    except:
+        return False
 
 # ================= LOGGING =================
 def log_event(event, severity="Low", email="Anonymous"):
@@ -113,10 +141,20 @@ def log_event(event, severity="Low", email="Anonymous"):
         pass
 
 
+# ================= HONEYTOKEN EMAILS =================
+HONEYTOKEN_EMAILS = {
+    "admin.backup@royalchallengers.com",
+    "soc.monitor@royalchallengers.com",
+    "security.audit@royalchallengers.com"
+}
+
 # ================= ROUTES =================
 
 @app.before_request
 def monitor():
+    ip = get_request_ip()
+    if is_ip_blocked(ip) and request.endpoint not in ("static", "login"):
+        return render_template("blocked.html", ip=ip), 403
     if not request.path.startswith('/static') and request.endpoint != 'dashboard':
         log_event(f"Visited {request.path}", "Low", session.get("email", "Anonymous"))
 
@@ -153,7 +191,17 @@ def dashboard():
             doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
         if "createdAt" in doc and hasattr(doc["createdAt"], "strftime"):
             doc["createdAt"] = doc["createdAt"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
-    return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending)
+    blocked_ips = []
+    if role == "Super Admin":
+        raw_blocked = list(cols["blocked"].find().sort("blocked_at", -1))
+        from zoneinfo import ZoneInfo as _ZI
+        _ist = _ZI("Asia/Kolkata")
+        for doc in raw_blocked:
+            doc["_id"] = str(doc["_id"])
+            if "blocked_at" in doc and hasattr(doc["blocked_at"], "strftime"):
+                doc["blocked_at"] = doc["blocked_at"].astimezone(_ist).strftime("%d-%m-%Y %H:%M:%S")
+        blocked_ips = raw_blocked
+    return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending, blocked_ips=blocked_ips)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -296,6 +344,20 @@ def login():
 
         user = cols["users"].find_one({"email": email})
 
+        if email in HONEYTOKEN_EMAILS:
+            ip = get_request_ip()
+            log_event("HONEYTOKEN_EMAIL_TRIGGERED", "High", email)
+            block_ip(ip, f"Honeytoken email used: {email}")
+            send_alert_emails(
+                "🚨 Honeytoken Email Used!",
+                f"Someone attempted login with honeytoken email: {email}\nIP: {ip}\nIP has been automatically blocked."
+            )
+            send_voice_alert(
+                f"Alert! A honeytoken email {email} was used in a login attempt from IP {ip}. The IP has been blocked."
+            )
+            flash("Invalid credentials")
+            return render_template("login.html")
+
         if user and check_password_hash(user["password"], password):
             session["email"] = email
             session["role"] = user.get("role", "Employee")
@@ -358,17 +420,30 @@ def report_incident():
 
 @app.route("/honeytoken-access")
 def honeytoken():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    ip = get_request_ip()
     triggered_by = session.get("email", "Anonymous")
     log_event("HONEYTOKEN_TRIGGERED", "High", triggered_by)
+    block_ip(ip, "Honeytoken link accessed")
     send_alert_emails(
         "🚨 Honeytoken Triggered!",
-        f"Someone accessed the hidden honeytoken link.\nUser: {triggered_by}\nIP: {ip}"
+        f"Someone accessed the hidden honeytoken link.\nUser: {triggered_by}\nIP: {ip}\nIP has been automatically blocked."
     )
     send_voice_alert(
-        f"Alert! Honeytoken was triggered on the Royal Challengers system by {triggered_by} from IP {ip}. Immediate investigation required."
+        f"Alert! Honeytoken was triggered by {triggered_by} from IP {ip}. The IP has been blocked."
     )
     return redirect(url_for("login"))
+
+@app.route("/unblock_ip/<path:ip>", methods=["POST"])
+def unblock_ip(ip):
+    if session.get("role") != "Super Admin":
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    cols["blocked"].delete_one({"ip": ip})
+    log_event("IP_UNBLOCKED", "Medium", session["email"])
+    flash(f"IP {ip} has been unblocked.")
+    return redirect(url_for("dashboard"))
 
 @app.route("/logout")
 def logout():

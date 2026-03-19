@@ -1,5 +1,7 @@
 {% extends "layout.html" %}
 {% block content %}
+<!-- FLOATING CLOCK -->
+<div class="floating-clock" id="clock"></div>
 <div class="soc-wrapper">
 
     <div class="soc-header">
@@ -7,7 +9,6 @@
             <h2>🛡️ SOC Dashboard</h2>
             <p style="color:#aaa; font-size:0.85rem;">{{ session['email'] }} &nbsp;|&nbsp; <span style="color:#c6a15b;">{{ session['role'] }}</span></p>
         </div>
-        <div style="font-size:0.8rem; color:#aaa;">Last updated: <span id="clock"></span></div>
     </div>
 
     <!-- STAT CARDS -->
@@ -124,6 +125,32 @@
             </tbody>
         </table>
     </div>
+
+    {% if session['role'] == 'Super Admin' and blocked_ips %}
+    <!-- BLOCKED IPs -->
+    <div class="soc-section">
+        <h3>🚫 Blocked IPs</h3>
+        <table class="soc-table">
+            <thead>
+                <tr><th>IP Address</th><th>Reason</th><th>Blocked At</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {% for b in blocked_ips %}
+                <tr class="row-high">
+                    <td>{{ b.ip }}</td>
+                    <td>{{ b.reason }}</td>
+                    <td>{{ b.blocked_at }}</td>
+                    <td>
+                        <form action="/unblock_ip/{{ b.ip }}" method="POST" style="display:inline;">
+                            <button type="submit" class="tbl-btn approve">✔ Unblock</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 
     {% else %}
     <!-- EMPLOYEE VIEW -->

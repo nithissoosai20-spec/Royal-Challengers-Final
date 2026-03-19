@@ -24,8 +24,23 @@
                 {% if session.get('role') in ['Super Admin', 'Admin', 'Security Analyst'] %}
                     <a href="/dashboard" style="color:#c6a15b; font-weight:bold;">SOC DASHBOARD</a>
                 {% endif %}
-                <span style="color:#aaa; font-size:0.8rem; margin: 0 10px;">{{ session.get('role') }}</span>
-                <a href="/logout" class="logout-btn">Logout</a>
+                <!-- PROFILE AVATAR -->
+                <div class="profile-menu">
+                    <div class="profile-avatar">{{ session.get('email')[0].upper() }}</div>
+                    <div class="profile-dropdown">
+                        <div class="profile-info">
+                            <div class="profile-avatar-lg">{{ session.get('email')[0].upper() }}</div>
+                            <p class="profile-name">{{ session.get('email').split('@')[0] }}</p>
+                            <p class="profile-email">{{ session.get('email') }}</p>
+                            <span class="profile-role-badge">{{ session.get('role') }}</span>
+                        </div>
+                        <div class="profile-divider"></div>
+                        <a href="/dashboard" class="profile-item">🛡️ SOC Dashboard</a>
+                        <a href="/report-incident" class="profile-item">📋 Report Incident</a>
+                        <div class="profile-divider"></div>
+                        <a href="/logout" class="profile-item profile-logout">🚪 Logout</a>
+                    </div>
+                </div>
             {% else %}
                 <a href="/login">Login</a>
                 <a href="/register" class="btn" style="padding:8px 16px; font-size:0.85rem;">Register</a>

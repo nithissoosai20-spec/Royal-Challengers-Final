@@ -1,0 +1,8 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="text-align:center; padding:80px 20px;">
+    <h1 style="color:#da251d; font-size:3rem;">🚫 Access Denied</h1>
+    <p style="color:#aaa; margin-top:15px;">Your IP address <strong style="color:#c6a15b;">{{ ip }}</strong> has been blocked due to suspicious activity.</p>
+    <p style="color:#666; margin-top:10px;">Contact your system administrator to request access.</p>
+</div>
+{% endblock %}
