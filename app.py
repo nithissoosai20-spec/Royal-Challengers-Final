@@ -284,7 +284,7 @@ def record_login(email, ip, success=True):
         user = cols["users"].find_one({"email": email}, {"login_history": 1})
         history = user.get("login_history", []) if user else []
         recent = [h for h in history if h.get("timestamp") and
-                  (datetime.now(timezone.utc) - h["timestamp"]).total_seconds() < 3600
+                  (datetime.now(timezone.utc) - (h["timestamp"].replace(tzinfo=timezone.utc) if h["timestamp"].tzinfo is None else h["timestamp"])).total_seconds() < 3600
                   and h.get("country") and h["country"] != intel.get("country","")]
         if recent and intel.get("country"):
             log_event("SUSPICIOUS_LOGIN_MULTI_COUNTRY", "High", email)
@@ -585,7 +585,10 @@ def login():
             # Password expiry check — 90 days
             from datetime import timedelta
             pwd_changed = user.get("password_changed_at", user.get("createdAt"))
-            if pwd_changed and (datetime.now(timezone.utc) - pwd_changed).days > 90:
+            if pwd_changed:
+                if pwd_changed.tzinfo is None:
+                    pwd_changed = pwd_changed.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - pwd_changed).days > 90:
                 session["pwd_expired_email"] = email
                 flash("Your password has expired. Please set a new password.")
                 return redirect(url_for("change_password"))
