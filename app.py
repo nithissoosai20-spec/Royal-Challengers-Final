@@ -247,12 +247,12 @@ def is_email_locked(email):
 # ================= AUDIT TRAIL =================
 def audit(action, details=""):
     try:
-        cols = get_db_collections()
-        if not cols:
+        if _mongo_client is None:
+            get_db_collections()
+        if _mongo_client is None:
             return
         ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
-        cols["audit"] = cols["logs"]._Collection__database["audit_logs"]
-        cols["audit"].insert_one({
+        _mongo_client["royal_challengers_db"]["audit_logs"].insert_one({
             "timestamp": datetime.now(timezone.utc),
             "actor": session.get("email", "Anonymous"),
             "role": session.get("role", ""),
@@ -1053,13 +1053,13 @@ def assign_incident(incident_id):
 def audit_log():
     if session.get("role") != "Super Admin":
         return "Unauthorized", 403
-    cols = get_db_collections()
-    if not cols:
+    if _mongo_client is None:
+        get_db_collections()
+    if _mongo_client is None:
         return "Database Offline", 500
     from zoneinfo import ZoneInfo
     ist = ZoneInfo("Asia/Kolkata")
-    db = cols["logs"]._Collection__database
-    entries = list(db["audit_logs"].find().sort("timestamp", -1).limit(50))
+    entries = list(_mongo_client["royal_challengers_db"]["audit_logs"].find().sort("timestamp", -1).limit(50))
     for e in entries:
         e["_id"] = str(e["_id"])
         if "timestamp" in e and hasattr(e["timestamp"], "strftime"):
