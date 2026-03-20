@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="soc-wrapper">
+    <div class="soc-header">
+        <div>
+            <h2>👥 User Management</h2>
+            <p style="color:#aaa; font-size:0.85rem;">Super Admin — Manage all registered users</p>
+        </div>
+        <a href="/dashboard" class="btn btn-outline">← Back to Dashboard</a>
+    </div>
+
+    <div class="soc-section">
+        <h3>All Users</h3>
+        <table class="soc-table">
+            <thead>
+                <tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th>Change Role</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.name }}</td>
+                    <td>{{ u.email }}</td>
+                    <td><span class="role-badge">{{ u.role }}</span></td>
+                    <td>{{ u.createdAt }}</td>
+                    <td>
+                        <form action="/change_role/{{ u.email }}" method="POST" style="display:inline;">
+                            <select name="role" class="status-select">
+                                <option value="Employee" {{ 'selected' if u.role == 'Employee' }}>Employee</option>
+                                <option value="Security Analyst" {{ 'selected' if u.role == 'Security Analyst' }}>Security Analyst</option>
+                                <option value="Admin" {{ 'selected' if u.role == 'Admin' }}>Admin</option>
+                                <option value="Super Admin" {{ 'selected' if u.role == 'Super Admin' }}>Super Admin</option>
+                            </select>
+                            <button type="submit" class="tbl-btn approve">Save</button>
+                        </form>
+                    </td>
+                    <td>
+                        {% if u.email != session['email'] %}
+                        <form action="/deactivate_user/{{ u.email }}" method="POST" style="display:inline;"
+                              onsubmit="return confirm('Deactivate {{ u.email }}?')">
+                            <button type="submit" class="tbl-btn reject">🗑 Remove</button>
+                        </form>
+                        {% else %}
+                        <span style="color:#aaa; font-size:0.8rem;">You</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

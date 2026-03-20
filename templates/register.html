@@ -16,7 +16,9 @@
     <form method="POST" action="{{ url_for('register') }}">
         <input type="text" name="name" placeholder="Full Name" required>
         <input type="email" name="email" placeholder="Corporate Email" required>
-        <input type="password" name="password" placeholder="Password" required>
+        <input type="password" name="password" id="password" placeholder="Password (min 8 chars)" required oninput="checkStrength(this.value)">
+        <div class="strength-bar"><div id="strengthFill"></div></div>
+        <p id="strengthText" style="font-size:0.78rem; margin-top:2px;"></p>
 
         <label for="role">Select Your Role:</label>
         <select name="role" id="role" required>
@@ -32,4 +34,21 @@
 
     <p class="login-link">Already have access? <a href="{{ url_for('login') }}">Login here</a></p>
 </div>
+<script>
+function checkStrength(pw) {
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    const fill = document.getElementById('strengthFill');
+    const text = document.getElementById('strengthText');
+    const colors = ['#da251d','#f0a500','#f0a500','#4caf50','#2e7d32'];
+    const labels = ['','Weak','Fair','Good','Strong'];
+    fill.style.width = (score * 25) + '%';
+    fill.style.background = colors[score];
+    text.textContent = labels[score];
+    text.style.color = colors[score];
+}
+</script>
 {% endblock %}

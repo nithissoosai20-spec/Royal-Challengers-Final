@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,46 +7,109 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <nav>
-        <div class="nav-brand">
-            <span style="color:#da251d;">RC</span><span style="color:#c6a15b;">CORP</span>
-            <span style="font-size:0.65rem; color:#aaa; display:block; letter-spacing:2px;">CYBERSECURITY INTELLIGENCE</span>
-        </div>
-        <div class="nav-links">
-            <a href="/">Home</a>
-            <a href="/about">About</a>
-            <a href="/services">Services</a>
-            <a href="/careers">Careers</a>
-            <a href="/contact">Contact</a>
 
-            {% if session.get('email') %}
-                <a href="/report-incident">Report Incident</a>
-                {% if session.get('role') in ['Super Admin', 'Admin', 'Security Analyst'] %}
-                    <a href="/dashboard" style="color:#c6a15b; font-weight:bold;">SOC DASHBOARD</a>
-                {% endif %}
-                <!-- PROFILE AVATAR -->
-                <div class="profile-menu">
-                    <div class="profile-avatar">{{ session.get('email')[0].upper() }}</div>
-                    <div class="profile-dropdown">
-                        <div class="profile-info">
-                            <div class="profile-avatar-lg">{{ session.get('email')[0].upper() }}</div>
-                            <p class="profile-name">{{ session.get('email').split('@')[0] }}</p>
-                            <p class="profile-email">{{ session.get('email') }}</p>
-                            <span class="profile-role-badge">{{ session.get('role') }}</span>
-                        </div>
-                        <div class="profile-divider"></div>
-                        <a href="/dashboard" class="profile-item">🛡️ SOC Dashboard</a>
-                        <a href="/report-incident" class="profile-item">📋 Report Incident</a>
-                        <div class="profile-divider"></div>
-                        <a href="/logout" class="profile-item profile-logout">🚪 Logout</a>
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-brand">
+            <span class="brand-rc">RC</span><span class="brand-corp">CORP</span>
+        </div>
+        <span class="sidebar-tagline">CYBERSECURITY INTELLIGENCE</span>
+    </div>
+
+    <nav class="sidebar-nav">
+
+        <!-- PUBLIC LINKS -->
+        <div class="nav-group">
+            <div class="nav-group-label">MAIN</div>
+            <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">🏠 <span>Home</span></a>
+
+            <!-- Company dropdown -->
+            <div class="nav-dropdown">
+                <div class="nav-item nav-dropdown-toggle" onclick="toggleDropdown('dd-company')">
+                    🏢 <span>Company</span> <span class="dd-arrow" id="arr-dd-company">▸</span>
+                </div>
+                <div class="nav-dropdown-menu" id="dd-company">
+                    <a href="/about" class="nav-sub-item {% if request.path == '/about' %}active{% endif %}">About Us</a>
+                    <a href="/services" class="nav-sub-item {% if request.path == '/services' %}active{% endif %}">Services</a>
+                    <a href="/careers" class="nav-sub-item {% if request.path == '/careers' %}active{% endif %}">Careers</a>
+                    <a href="/contact" class="nav-sub-item {% if request.path == '/contact' %}active{% endif %}">Contact</a>
+                </div>
+            </div>
+        </div>
+
+        {% if session.get('email') %}
+        <!-- SOC TOOLS -->
+        <div class="nav-group">
+            <div class="nav-group-label">SOC TOOLS</div>
+            <a href="/report-incident" class="nav-item {% if request.path == '/report-incident' %}active{% endif %}">📋 <span>Report Incident</span></a>
+
+            {% if session.get('role') in ['Super Admin', 'Admin', 'Security Analyst'] %}
+            <a href="/dashboard" class="nav-item {% if request.path == '/dashboard' %}active{% endif %}">🛡️ <span>SOC Dashboard</span></a>
+
+            <!-- Export dropdown -->
+            <div class="nav-dropdown">
+                <div class="nav-item nav-dropdown-toggle" onclick="toggleDropdown('dd-export')">
+                    ⬇️ <span>Export Data</span> <span class="dd-arrow" id="arr-dd-export">▸</span>
+                </div>
+                <div class="nav-dropdown-menu" id="dd-export">
+                    <a href="/export/csv" class="nav-sub-item">📄 CSV</a>
+                    <a href="/export/pdf" class="nav-sub-item">📕 PDF</a>
+                    <a href="/export/word" class="nav-sub-item">📘 Word</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if session.get('role') == 'Super Admin' %}
+            <!-- Admin dropdown -->
+            <div class="nav-group">
+                <div class="nav-group-label">ADMIN</div>
+                <div class="nav-dropdown">
+                    <div class="nav-item nav-dropdown-toggle" onclick="toggleDropdown('dd-admin')">
+                        ⚙️ <span>Administration</span> <span class="dd-arrow" id="arr-dd-admin">▸</span>
+                    </div>
+                    <div class="nav-dropdown-menu" id="dd-admin">
+                        <a href="/user_management" class="nav-sub-item {% if request.path == '/user_management' %}active{% endif %}">👥 User Management</a>
                     </div>
                 </div>
-            {% else %}
-                <a href="/login">Login</a>
-                <a href="/register" class="btn" style="padding:8px 16px; font-size:0.85rem;">Register</a>
+            </div>
             {% endif %}
         </div>
+        {% endif %}
+
+        <!-- ACCOUNT -->
+        <div class="nav-group">
+            <div class="nav-group-label">ACCOUNT</div>
+            {% if session.get('email') %}
+            <div class="sidebar-profile">
+                <div class="sidebar-avatar">{{ session.get('email')[0].upper() }}</div>
+                <div class="sidebar-profile-info">
+                    <p class="sidebar-profile-name">{{ session.get('email').split('@')[0] }}</p>
+                    <span class="sidebar-role-badge">{{ session.get('role') }}</span>
+                </div>
+            </div>
+            <a href="/logout" class="nav-item nav-logout">🚪 <span>Logout</span></a>
+            {% else %}
+            <a href="/login" class="nav-item {% if request.path == '/login' %}active{% endif %}">🔑 <span>Login</span></a>
+            <a href="/register" class="nav-item {% if request.path == '/register' %}active{% endif %}">📝 <span>Register</span></a>
+            {% endif %}
+        </div>
+
     </nav>
+
+    <!-- Dark/Light toggle at bottom -->
+    <div class="sidebar-footer">
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
+            <span id="theme-icon">☀️</span> <span id="theme-label">Light Mode</span>
+        </button>
+    </div>
+</aside>
+
+<!-- SIDEBAR TOGGLE (mobile / collapse) -->
+<button class="sidebar-toggle-btn" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
+
+<!-- MAIN CONTENT -->
+<div class="main-content" id="mainContent">
 
     {% with messages = get_flashed_messages() %}
       {% if messages %}
@@ -78,5 +141,43 @@
             </div>
         </div>
     </footer>
+</div>
+
+<script>
+function toggleDropdown(id) {
+    const menu = document.getElementById(id);
+    const arrow = document.getElementById('arr-' + id);
+    const open = menu.classList.toggle('open');
+    if (arrow) arrow.textContent = open ? '▾' : '▸';
+}
+
+function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    const mc = document.getElementById('mainContent');
+    const btn = document.getElementById('sidebarToggle');
+    sb.classList.toggle('collapsed');
+    mc.classList.toggle('sidebar-collapsed');
+    btn.classList.toggle('shifted');
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    document.getElementById('theme-icon').textContent = isDark ? '🌙' : '☀️';
+    document.getElementById('theme-label').textContent = isDark ? 'Dark Mode' : 'Light Mode';
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+}
+
+// Restore saved theme
+(function() {
+    const saved = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    if (saved === 'light') {
+        document.getElementById('theme-icon').textContent = '🌙';
+        document.getElementById('theme-label').textContent = 'Dark Mode';
+    }
+})();
+</script>
 </body>
 </html>

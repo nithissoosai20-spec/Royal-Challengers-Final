@@ -9,14 +9,6 @@
             <h2>🛡️ SOC Dashboard</h2>
             <p style="color:#aaa; font-size:0.85rem;">{{ session['email'] }} &nbsp;|&nbsp; <span style="color:#c6a15b;">{{ session['role'] }}</span></p>
         </div>
-        {% if session['role'] in ['Super Admin', 'Admin', 'Security Analyst'] %}
-        <div class="export-btns">
-            <span style="color:#aaa; font-size:0.78rem; margin-right:8px;">Export:</span>
-            <a href="/export/csv" class="export-btn csv">⬇ CSV</a>
-            <a href="/export/pdf" class="export-btn pdf">⬇ PDF</a>
-            <a href="/export/word" class="export-btn word">⬇ Word</a>
-        </div>
-        {% endif %}
     </div>
 
     <!-- STAT CARDS -->
@@ -94,16 +86,27 @@
         {% if user_reports %}
         <table class="soc-table">
             <thead>
-                <tr><th>ID</th><th>Reporter</th><th>Type</th><th>Severity</th><th>Description</th></tr>
+                <tr><th>ID</th><th>Reporter</th><th>Type</th><th>Severity</th><th>Status</th><th>Description</th><th>Action</th></tr>
             </thead>
             <tbody>
                 {% for r in user_reports %}
-                <tr class="{{ 'row-high' if r.severity == 'High' else 'row-medium' if r.severity == 'Medium' else 'row-low' }}">
+                <tr class="{{ 'row-high' if r.severity == 'High' or r.severity == 'Critical' else 'row-medium' if r.severity == 'Medium' else 'row-low' }}">
                     <td>{{ r.incident_id }}</td>
                     <td>{{ r.reporter }}</td>
                     <td>{{ r.type }}</td>
                     <td><span class="sev-badge {{ r.severity | lower }}">{{ r.severity }}</span></td>
+                    <td><span class="status-badge {{ r.get('status', 'Open') | lower | replace(' ', '-') }}">{{ r.get('status', 'Open') }}</span></td>
                     <td>{{ r.message }}</td>
+                    <td>
+                        <form action="/update_incident/{{ r.incident_id }}" method="POST" style="display:inline;">
+                            <select name="status" class="status-select">
+                                <option value="Open" {{ 'selected' if r.get('status','Open') == 'Open' }}>Open</option>
+                                <option value="In Progress" {{ 'selected' if r.get('status') == 'In Progress' }}>In Progress</option>
+                                <option value="Resolved" {{ 'selected' if r.get('status') == 'Resolved' }}>Resolved</option>
+                            </select>
+                            <button type="submit" class="tbl-btn approve">Update</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -115,14 +118,23 @@
 
     <!-- SECURITY LOGS -->
     <div class="soc-section">
-        <h3>🔒 Security Logs</h3>
-        <table class="soc-table">
+        <h3>🔒 Security Logs
+            <span style="float:right; display:flex; gap:8px;">
+                <select id="sevFilter" onchange="filterLogs()" class="status-select">
+                    <option value="">All Severity</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                </select>
+            </span>
+        </h3>
+        <table class="soc-table" id="logsTable">
             <thead>
                 <tr><th>Time</th><th>Event</th><th>Severity</th><th>User</th><th>IP</th><th>Location</th><th>Abuse Score</th></tr>
             </thead>
-            <tbody>
+            <tbody id="logsBody">
                 {% for log in logs %}
-                <tr class="{{ 'row-high' if log.severity == 'High' else 'row-medium' if log.severity == 'Medium' else 'row-low' }}">
+                <tr class="{{ 'row-high' if log.severity == 'High' else 'row-medium' if log.severity == 'Medium' else 'row-low' }}" data-severity="{{ log.severity }}">
                     <td>{{ log.timestamp }}</td>
                     <td>{{ log.event }}</td>
                     <td><span class="sev-badge {{ log.severity | lower }}">{{ log.severity }}</span></td>
@@ -139,6 +151,45 @@
             </tbody>
         </table>
     </div>
+
+    {% if session['role'] == 'Super Admin' %}
+    <div class="soc-section" style="text-align:center; padding:20px;">
+        <a href="/user_management" class="btn" style="background:#1565c0;">👥 Manage Users</a>
+    </div>
+    {% endif %}
+
+    <!-- THREAT INTELLIGENCE FEED -->
+    {% if session['role'] in ['Super Admin', 'Admin', 'Security Analyst'] %}
+    <div class="soc-section">
+        <h3>🌐 Threat Intelligence Feed
+            <span style="float:right; font-size:0.75rem; color:#aaa; font-weight:400;">Top abusive IPs from recent logs</span>
+        </h3>
+        <table class="soc-table" id="threatTable">
+            <thead>
+                <tr><th>IP</th><th>Location</th><th>ISP</th><th>Abuse Score</th><th>Reports</th><th>Last Seen Event</th></tr>
+            </thead>
+            <tbody id="threatBody">
+                {% set seen_ips = [] %}
+                {% for log in logs %}
+                    {% if log.get('abuse_score', 0) > 0 and log.ip not in seen_ips %}
+                        {% if seen_ips.append(log.ip) %}{% endif %}
+                        <tr class="row-high">
+                            <td><code>{{ log.ip }}</code></td>
+                            <td>{{ (log.city + ', ' + log.country) if log.get('city') else '—' }}</td>
+                            <td>{{ log.get('isp', '—') }}</td>
+                            <td><span class="abuse-badge {{ 'abuse-high' if log.abuse_score > 50 else 'abuse-low' }}">{{ log.abuse_score }}%</span></td>
+                            <td>{{ log.get('abuse_reports', '—') }}</td>
+                            <td>{{ log.event }}</td>
+                        </tr>
+                    {% endif %}
+                {% endfor %}
+                {% if not logs or logs | selectattr('abuse_score', 'gt', 0) | list | length == 0 %}
+                <tr><td colspan="6" class="no-data">No threat intelligence data yet — triggers on High/Medium events.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 
     {% if session['role'] == 'Super Admin' and blocked_ips %}
     <!-- BLOCKED IPs -->
@@ -186,6 +237,26 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+    // Auto-refresh stat cards every 60 seconds
+    setInterval(() => {
+        fetch('/api/dashboard_data')
+            .then(r => r.json())
+            .then(data => {
+                if (data.log_count !== undefined) {
+                    document.querySelectorAll('.card-value')[1].textContent = data.log_count;
+                    document.querySelectorAll('.card-value')[2].textContent = data.high_count;
+                }
+            }).catch(() => {});
+    }, 60000);
+
+    // Log severity filter
+    function filterLogs() {
+        const val = document.getElementById('sevFilter').value;
+        document.querySelectorAll('#logsBody tr').forEach(row => {
+            row.style.display = (!val || row.dataset.severity === val) ? '' : 'none';
+        });
+    }
+
     // Clock
     function updateClock() {
         document.getElementById('clock').textContent = new Date().toLocaleTimeString();

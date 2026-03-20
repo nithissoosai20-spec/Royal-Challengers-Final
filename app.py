@@ -176,7 +176,9 @@ def log_event(event, severity="Low", email="Anonymous"):
             "ip": ip,
             "country": intel.get("country", ""),
             "city": intel.get("city", ""),
-            "abuse_score": intel.get("abuse_score", 0)
+            "isp": intel.get("isp", ""),
+            "abuse_score": intel.get("abuse_score", 0),
+            "abuse_reports": intel.get("abuse_reports", 0)
         })
     except:
         pass
@@ -189,10 +191,30 @@ HONEYTOKEN_EMAILS = {
     "security.audit@royalchallengers.com"
 }
 
+# ================= BRUTE FORCE PROTECTION =================
+MAX_ATTEMPTS = 5
+
+def get_failed_attempts(ip):
+    try:
+        cols = get_db_collections()
+        rec = cols["logs"].count_documents({"ip": ip, "event": "LOGIN_FAILED",
+            "timestamp": {"$gte": datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)}})
+        return rec
+    except:
+        return 0
+
 # ================= ROUTES =================
 
 @app.before_request
 def monitor():
+    # Session timeout — 20 mins inactivity
+    if "email" in session:
+        last = session.get("last_active")
+        if last and (datetime.now(timezone.utc).timestamp() - last) > 1200:
+            session.clear()
+            flash("Session expired due to inactivity. Please login again.")
+            return redirect(url_for("login"))
+        session["last_active"] = datetime.now(timezone.utc).timestamp()
     ip = get_request_ip()
     if is_ip_blocked(ip) and request.endpoint not in ("static", "login"):
         return render_template("blocked.html", ip=ip), 403
@@ -399,12 +421,26 @@ def login():
             flash("Invalid credentials")
             return render_template("login.html")
 
+        ip = get_request_ip()
+        attempts = get_failed_attempts(ip)
+        if attempts >= MAX_ATTEMPTS:
+            block_ip(ip, f"Brute force: {attempts} failed login attempts")
+            log_event("BRUTE_FORCE_BLOCKED", "High", email)
+            send_alert_emails(
+                "🚨 Brute Force Attack Detected!",
+                f"IP {ip} has been blocked after {attempts} failed login attempts.\nLast attempted email: {email}"
+            )
+            flash("Too many failed attempts. Your IP has been blocked.")
+            return render_template("login.html")
+
         if user and check_password_hash(user["password"], password):
             session["email"] = email
             session["role"] = user.get("role", "Employee")
+            session["last_active"] = datetime.now(timezone.utc).timestamp()
             log_event("LOGIN_SUCCESS", "Low", email)
             return redirect(url_for("dashboard"))
 
+        log_event("LOGIN_FAILED", "Medium", email)
         flash("Invalid credentials")
 
     return render_template("login.html")
@@ -607,6 +643,79 @@ def export_soc(fmt):
                         headers={"Content-Disposition": "attachment;filename=soc_report.docx"})
 
     return "Invalid format", 400
+
+@app.route("/update_incident/<incident_id>", methods=["POST"])
+def update_incident(incident_id):
+    if session.get("role") not in ["Super Admin", "Admin", "Security Analyst"]:
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    status = request.form.get("status")
+    cols["reports"].update_one(
+        {"incident_id": incident_id},
+        {"$set": {"status": status, "updated_by": session["email"], "updated_at": datetime.now(timezone.utc)}}
+    )
+    log_event(f"INCIDENT_{status.upper().replace(' ','_')}", "Low", session["email"])
+    flash(f"Incident {incident_id} marked as {status}.")
+    return redirect(url_for("dashboard"))
+
+@app.route("/user_management")
+def user_management():
+    if session.get("role") != "Super Admin":
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    users = list(cols["users"].find({}, {"password": 0}))
+    for u in users:
+        u["_id"] = str(u["_id"])
+        if "createdAt" in u and hasattr(u["createdAt"], "strftime"):
+            u["createdAt"] = u["createdAt"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+    return render_template("user_management.html", users=users)
+
+@app.route("/change_role/<user_email>", methods=["POST"])
+def change_role(user_email):
+    if session.get("role") != "Super Admin":
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    new_role = request.form.get("role")
+    cols["users"].update_one({"email": user_email}, {"$set": {"role": new_role}})
+    log_event("ROLE_CHANGED", "Medium", session["email"])
+    flash(f"{user_email} role changed to {new_role}.")
+    return redirect(url_for("user_management"))
+
+@app.route("/deactivate_user/<user_email>", methods=["POST"])
+def deactivate_user(user_email):
+    if session.get("role") != "Super Admin":
+        return "Unauthorized", 403
+    if user_email == session["email"]:
+        flash("You cannot deactivate yourself.")
+        return redirect(url_for("user_management"))
+    cols = get_db_collections()
+    cols["users"].delete_one({"email": user_email})
+    log_event("USER_DEACTIVATED", "Medium", session["email"])
+    flash(f"{user_email} has been deactivated.")
+    return redirect(url_for("user_management"))
+
+@app.route("/api/dashboard_data")
+def dashboard_data():
+    if "email" not in session:
+        return {"error": "unauthorized"}, 401
+    cols = get_db_collections()
+    if not cols:
+        return {"error": "db offline"}, 500
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    logs = list(cols["logs"].find().sort("timestamp", -1).limit(20))
+    for doc in logs:
+        doc["_id"] = str(doc["_id"])
+        if "timestamp" in doc and hasattr(doc["timestamp"], "strftime"):
+            doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+    from flask import jsonify
+    return jsonify({"log_count": len(logs), "high_count": sum(1 for l in logs if l["severity"] == "High")})
 
 @app.route("/logout")
 def logout():
