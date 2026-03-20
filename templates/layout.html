@@ -70,6 +70,8 @@
                     </div>
                     <div class="nav-dropdown-menu" id="dd-admin">
                         <a href="/user_management" class="nav-sub-item {% if request.path == '/user_management' %}active{% endif %}">👥 User Management</a>
+                        <a href="/audit_log" class="nav-sub-item {% if request.path == '/audit_log' %}active{% endif %}">📋 Audit Trail</a>
+                        <a href="/daily_digest" class="nav-sub-item">📊 Send Daily Digest</a>
                     </div>
                 </div>
             </div>
@@ -89,6 +91,9 @@
                 </div>
             </div>
             <a href="/logout" class="nav-item nav-logout">🚪 <span>Logout</span></a>
+            <!-- 2FA Setup link -->
+            <a href="/setup_2fa" class="nav-item" style="font-size:0.78rem;">🔐 <span>Enable 2FA</span></a>
+            <a href="/profile" class="nav-item {% if request.path == '/profile' %}active{% endif %}">👤 <span>My Profile</span></a>
             {% else %}
             <a href="/login" class="nav-item {% if request.path == '/login' %}active{% endif %}">🔑 <span>Login</span></a>
             <a href="/register" class="nav-item {% if request.path == '/register' %}active{% endif %}">📝 <span>Register</span></a>

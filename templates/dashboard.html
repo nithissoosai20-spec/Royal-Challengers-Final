@@ -106,6 +106,17 @@
                             </select>
                             <button type="submit" class="tbl-btn approve">Update</button>
                         </form>
+                        {% if session['role'] in ['Super Admin', 'Admin'] %}
+                        <form action="/assign_incident/{{ r.incident_id }}" method="POST" style="display:inline;">
+                            <select name="assignee" class="status-select">
+                                <option value="">Assign to...</option>
+                                {% for a in analysts %}
+                                <option value="{{ a.email }}" {{ 'selected' if r.get('assigned_to') == a.email }}>{{ a.email }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="tbl-btn approve">Assign</button>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -119,7 +130,8 @@
     <!-- SECURITY LOGS -->
     <div class="soc-section">
         <h3>🔒 Security Logs
-            <span style="float:right; display:flex; gap:8px;">
+            <span style="float:right; display:flex; gap:8px; align-items:center;">
+                <input type="text" id="logSearch" placeholder="Search IP, email, event..." class="status-select" style="width:200px;" oninput="searchLogs(this.value)">
                 <select id="sevFilter" onchange="filterLogs()" class="status-select">
                     <option value="">All Severity</option>
                     <option value="High">High</option>
@@ -158,7 +170,28 @@
     </div>
     {% endif %}
 
-    <!-- THREAT INTELLIGENCE FEED -->
+    <!-- 2FA STATUS CARD -->
+    <div class="soc-section" style="padding:18px 25px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div>
+            <strong style="color:var(--text);">🔐 Two-Factor Authentication</strong>
+            <p style="color:#aaa; font-size:0.82rem; margin-top:3px;">
+                {% if current_user_2fa %}
+                    <span style="color:#4caf50;">✅ Enabled</span> — Your account is protected with 2FA.
+                {% else %}
+                    <span style="color:#da251d;">❌ Not Enabled</span> — Your account has no 2FA protection.
+                {% endif %}
+            </p>
+        </div>
+        <div>
+            {% if current_user_2fa %}
+            <form action="/disable_2fa" method="POST" onsubmit="return confirm('Disable 2FA? Your account will be less secure.')">
+                <button type="submit" class="tbl-btn reject">Disable 2FA</button>
+            </form>
+            {% else %}
+            <a href="/setup_2fa" class="btn" style="padding:7px 18px; font-size:0.82rem;">Enable 2FA</a>
+            {% endif %}
+        </div>
+    </div>
     {% if session['role'] in ['Super Admin', 'Admin', 'Security Analyst'] %}
     <div class="soc-section">
         <h3>🌐 Threat Intelligence Feed
@@ -252,9 +285,16 @@
     // Log severity filter
     function filterLogs() {
         const val = document.getElementById('sevFilter').value;
+        const search = document.getElementById('logSearch') ? document.getElementById('logSearch').value.toLowerCase() : '';
         document.querySelectorAll('#logsBody tr').forEach(row => {
-            row.style.display = (!val || row.dataset.severity === val) ? '' : 'none';
+            const sevMatch = !val || row.dataset.severity === val;
+            const textMatch = !search || row.innerText.toLowerCase().includes(search);
+            row.style.display = (sevMatch && textMatch) ? '' : 'none';
         });
+    }
+
+    function searchLogs(q) {
+        if (q.length === 0 || q.length >= 2) filterLogs();
     }
 
     // Clock

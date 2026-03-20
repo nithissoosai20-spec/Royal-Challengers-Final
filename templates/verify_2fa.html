@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container" style="max-width:420px;">
+    <div style="text-align:center; margin-bottom:20px;">
+        <div style="font-size:3rem;">🔐</div>
+        <h2 style="color:#da251d;">Two-Factor Verification</h2>
+        <p style="color:#666; font-size:0.9rem;">Enter the 6-digit code from your authenticator app.</p>
+    </div>
+
+    <form method="POST">
+        <label>Authenticator Code</label>
+        <input type="text" name="code" placeholder="000000" maxlength="6" required autocomplete="off"
+               style="letter-spacing:6px; font-size:1.4rem; text-align:center;" autofocus>
+        <button type="submit" class="btn" style="width:100%; margin-top:12px;">Verify & Login</button>
+    </form>
+
+    <p style="text-align:center; margin-top:15px; font-size:0.82rem; color:#aaa;">
+        Wrong account? <a href="/logout" style="color:#da251d;">Go back</a>
+    </p>
+</div>
+{% endblock %}

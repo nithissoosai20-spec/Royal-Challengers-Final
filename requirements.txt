@@ -9,3 +9,6 @@ markupsafe
 reportlab
 python-docx
 requests
+Flask-Limiter
+pyotp
+qrcode[pil]

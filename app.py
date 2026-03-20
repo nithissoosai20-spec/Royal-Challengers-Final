@@ -12,11 +12,31 @@ from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from markupsafe import escape
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+except ImportError:
+    Limiter = None
+    get_remote_address = None
 
 # ================= INITIALIZE =================
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "RC_CHAMPIONS_2026")
+
+# ================= RATE LIMITER =================
+if Limiter and get_remote_address:
+    limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
+else:
+    limiter = None
+
+def rate_limit(limit_str):
+    """Decorator that applies rate limit only if limiter is available."""
+    def decorator(f):
+        if limiter:
+            return limiter.limit(limit_str)(f)
+        return f
+    return decorator
 
 # Single persistent MongoDB connection
 _mongo_client = None
@@ -193,6 +213,7 @@ HONEYTOKEN_EMAILS = {
 
 # ================= BRUTE FORCE PROTECTION =================
 MAX_ATTEMPTS = 5
+LOCKOUT_MINUTES = 30
 
 def get_failed_attempts(ip):
     try:
@@ -203,7 +224,78 @@ def get_failed_attempts(ip):
     except:
         return 0
 
-# ================= ROUTES =================
+def get_email_failed_attempts(email):
+    """Count failed attempts for a specific email in last 30 mins."""
+    try:
+        cols = get_db_collections()
+        from datetime import timedelta
+        since = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_MINUTES)
+        return cols["logs"].count_documents({"email": email, "event": "LOGIN_FAILED", "timestamp": {"$gte": since}})
+    except:
+        return 0
+
+def is_email_locked(email):
+    """Check if email is locked out."""
+    try:
+        cols = get_db_collections()
+        from datetime import timedelta
+        since = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_MINUTES)
+        return cols["logs"].count_documents({"email": email, "event": "LOGIN_FAILED", "timestamp": {"$gte": since}}) >= 3
+    except:
+        return False
+
+# ================= AUDIT TRAIL =================
+def audit(action, details=""):
+    try:
+        cols = get_db_collections()
+        if not cols:
+            return
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+        cols["audit"] = cols["logs"]._Collection__database["audit_logs"]
+        cols["audit"].insert_one({
+            "timestamp": datetime.now(timezone.utc),
+            "actor": session.get("email", "Anonymous"),
+            "role": session.get("role", ""),
+            "action": action,
+            "details": details,
+            "ip": ip
+        })
+    except:
+        pass
+
+# ================= LOGIN HISTORY =================
+def record_login(email, ip, success=True):
+    try:
+        cols = get_db_collections()
+        if not cols:
+            return
+        intel = get_ip_intel(ip)
+        cols["users"].update_one(
+            {"email": email},
+            {"$push": {"login_history": {
+                "$each": [{"timestamp": datetime.now(timezone.utc), "ip": ip,
+                           "city": intel.get("city",""), "country": intel.get("country",""),
+                           "success": success}],
+                "$slice": -10
+            }}}
+        )
+        # Suspicious login detection — 2 different countries within 1 hour
+        from datetime import timedelta
+        user = cols["users"].find_one({"email": email}, {"login_history": 1})
+        history = user.get("login_history", []) if user else []
+        recent = [h for h in history if h.get("timestamp") and
+                  (datetime.now(timezone.utc) - h["timestamp"]).total_seconds() < 3600
+                  and h.get("country") and h["country"] != intel.get("country","")]
+        if recent and intel.get("country"):
+            log_event("SUSPICIOUS_LOGIN_MULTI_COUNTRY", "High", email)
+            send_alert_emails(
+                "🚨 Suspicious Login Detected!",
+                f"User {email} logged in from {intel.get('country')} but recently logged in from {recent[-1]['country']} — within 1 hour.\nIP: {ip}"
+            )
+            send_email(email, "⚠️ Suspicious Login on Your Account",
+                f"Hello,\n\nWe detected a login to your account ({email}) from {intel.get('city','')}, {intel.get('country','')} (IP: {ip}).\n\nA recent login was also detected from {recent[-1]['country']} within the last hour.\n\nIf this was not you, contact your SOC team immediately.")
+    except:
+        pass
 
 @app.before_request
 def monitor():
@@ -264,7 +356,10 @@ def dashboard():
             if "blocked_at" in doc and hasattr(doc["blocked_at"], "strftime"):
                 doc["blocked_at"] = doc["blocked_at"].astimezone(_ist).strftime("%d-%m-%Y %H:%M:%S")
         blocked_ips = raw_blocked
-    return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending, blocked_ips=blocked_ips)
+    analysts = list(cols["users"].find({"role": "Security Analyst"}, {"email": 1, "_id": 0}))
+    return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending,
+                           blocked_ips=blocked_ips, analysts=analysts,
+                           current_user_2fa=bool(cols["users"].find_one({"email": session["email"]}, {"totp_secret": 1}).get("totp_secret")))
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -379,6 +474,7 @@ def approve_user(user_email):
         cols["pending"].delete_one({"email": user_email})
         send_email(pending["email"], "Account Approved", f"Your {pending['role']} account has been approved! You can now login.")
         log_event("USER_APPROVED", "Medium", user_email)
+        audit("USER_APPROVED", f"Approved {user_email} as {pending['role']}")
         flash(f"{user_email} approved successfully.")
     return redirect(url_for("dashboard"))
 
@@ -395,20 +491,60 @@ def reject_user(user_email):
     return redirect(url_for("dashboard"))
 
 @app.route("/login", methods=["GET", "POST"])
+@rate_limit("10 per minute")
 def login():
+    if request.method == "GET":
+        # PROACTIVE: AbuseIPDB pre-check before showing login form
+        ip = get_request_ip()
+        try:
+            abuse = requests.get(
+                "https://api.abuseipdb.com/api/v2/check",
+                headers={"Key": os.getenv("ABUSEIPDB_KEY"), "Accept": "application/json"},
+                params={"ipAddress": ip, "maxAgeInDays": 90},
+                timeout=3
+            ).json()
+            score = abuse.get("data", {}).get("abuseConfidenceScore", 0)
+            if score >= 75:
+                block_ip(ip, f"High AbuseIPDB score on login page: {score}%")
+                log_event("PROACTIVE_BLOCK_ABUSEIPDB", "High", "Anonymous")
+                send_alert_emails(
+                    "🚨 Proactive Block: High Risk IP",
+                    f"IP {ip} was blocked before login attempt.\nAbuseIPDB Score: {score}%\nBlocked proactively."
+                )
+                return render_template("blocked.html", ip=ip), 403
+        except:
+            pass
+        return render_template("login.html", site_key=os.getenv("RECAPTCHA_SITE_KEY", ""))
+
     if request.method == "POST":
         cols = get_db_collections()
         if not cols:
             flash("Database error")
             return redirect(url_for("login"))
 
+        # PROACTIVE: Verify reCAPTCHA
+        recaptcha_secret = os.getenv("RECAPTCHA_SECRET_KEY", "")
+        if recaptcha_secret:
+            token = request.form.get("g-recaptcha-response", "")
+            try:
+                r = requests.post(
+                    "https://www.google.com/recaptcha/api/siteverify",
+                    data={"secret": recaptcha_secret, "response": token},
+                    timeout=3
+                ).json()
+                if not r.get("success") or r.get("score", 1) < 0.5:
+                    log_event("CAPTCHA_FAILED", "High", "Anonymous")
+                    flash("Security check failed. Please try again.")
+                    return render_template("login.html", site_key=os.getenv("RECAPTCHA_SITE_KEY", ""))
+            except:
+                pass
+
         email = request.form.get("email")
         password = request.form.get("password")
-
+        ip = get_request_ip()
         user = cols["users"].find_one({"email": email})
 
         if email in HONEYTOKEN_EMAILS:
-            ip = get_request_ip()
             log_event("HONEYTOKEN_EMAIL_TRIGGERED", "High", email)
             block_ip(ip, f"Honeytoken email used: {email}")
             send_alert_emails(
@@ -419,9 +555,8 @@ def login():
                 f"Alert! A honeytoken email {email} was used in a login attempt from IP {ip}. The IP has been blocked."
             )
             flash("Invalid credentials")
-            return render_template("login.html")
+            return render_template("login.html", site_key=os.getenv("RECAPTCHA_SITE_KEY", ""))
 
-        ip = get_request_ip()
         attempts = get_failed_attempts(ip)
         if attempts >= MAX_ATTEMPTS:
             block_ip(ip, f"Brute force: {attempts} failed login attempts")
@@ -430,20 +565,53 @@ def login():
                 "🚨 Brute Force Attack Detected!",
                 f"IP {ip} has been blocked after {attempts} failed login attempts.\nLast attempted email: {email}"
             )
+            # Alert the targeted account owner directly
+            if user:
+                send_email(
+                    user["email"],
+                    "⚠️ Security Alert: Someone is trying to access your account",
+                    f"Hello,\n\nWe detected {attempts} failed login attempts targeting your account ({email}) from IP {ip}.\n\nThe IP has been automatically blocked.\nIf this was not you, your account is safe. If you are concerned, please contact your SOC team immediately."
+                )
             flash("Too many failed attempts. Your IP has been blocked.")
-            return render_template("login.html")
+            return render_template("login.html", site_key=os.getenv("RECAPTCHA_SITE_KEY", ""))
+
+        # PROACTIVE: Email-based account lockout (blocks regardless of IP change)
+        if is_email_locked(email):
+            log_event("ACCOUNT_LOCKED", "High", email)
+            flash(f"Account temporarily locked due to multiple failed attempts. Try again in {LOCKOUT_MINUTES} minutes.")
+            return render_template("login.html", site_key=os.getenv("RECAPTCHA_SITE_KEY", ""))
 
         if user and check_password_hash(user["password"], password):
+            # Password expiry check — 90 days
+            from datetime import timedelta
+            pwd_changed = user.get("password_changed_at", user.get("createdAt"))
+            if pwd_changed and (datetime.now(timezone.utc) - pwd_changed).days > 90:
+                session["pwd_expired_email"] = email
+                flash("Your password has expired. Please set a new password.")
+                return redirect(url_for("change_password"))
+            if user.get("totp_secret"):
+                session["2fa_pending_email"] = email
+                session["2fa_pending_role"] = user.get("role", "Employee")
+                return redirect(url_for("verify_2fa"))
             session["email"] = email
             session["role"] = user.get("role", "Employee")
             session["last_active"] = datetime.now(timezone.utc).timestamp()
             log_event("LOGIN_SUCCESS", "Low", email)
+            record_login(email, ip, success=True)
             return redirect(url_for("dashboard"))
 
         log_event("LOGIN_FAILED", "Medium", email)
+        record_login(email, ip, success=False)
+        email_fails = get_email_failed_attempts(email)
+        if user and email_fails >= 3:
+            send_email(
+                user["email"],
+                "⚠️ Security Alert: Failed login attempts on your account",
+                f"Hello,\n\nWe noticed {email_fails} failed login attempts on your account ({email}) from IP {ip}.\n\nIf this was not you, please contact your SOC team immediately. Your account has been temporarily locked for {LOCKOUT_MINUTES} minutes."
+            )
         flash("Invalid credentials")
 
-    return render_template("login.html")
+    return render_template("login.html", site_key=os.getenv("RECAPTCHA_SITE_KEY", ""))
 
 @app.route("/about")
 def about():
@@ -508,6 +676,13 @@ def honeytoken():
     send_voice_alert(
         f"Alert! Honeytoken was triggered by {triggered_by} from IP {ip}. The IP has been blocked."
     )
+    # If a logged-in user triggered it, alert them directly too
+    if triggered_by != "Anonymous":
+        send_email(
+            triggered_by,
+            "⚠️ Security Alert: Suspicious activity on your account",
+            f"Hello,\n\nYour account ({triggered_by}) triggered a security honeytoken from IP {ip}.\n\nYour IP has been blocked. If this was not you, contact your SOC team immediately."
+        )
     return redirect(url_for("login"))
 
 @app.route("/unblock_ip/<path:ip>", methods=["POST"])
@@ -684,19 +859,30 @@ def change_role(user_email):
     new_role = request.form.get("role")
     cols["users"].update_one({"email": user_email}, {"$set": {"role": new_role}})
     log_event("ROLE_CHANGED", "Medium", session["email"])
+    audit("ROLE_CHANGED", f"Changed {user_email} role to {new_role}")
     flash(f"{user_email} role changed to {new_role}.")
     return redirect(url_for("user_management"))
 
 @app.route("/deactivate_user/<user_email>", methods=["POST"])
 def deactivate_user(user_email):
     if session.get("role") != "Super Admin":
-        return "Unauthorized", 403
+        flash("Only Super Admin can delete users.")
+        return redirect(url_for("dashboard"))
     if user_email == session["email"]:
         flash("You cannot deactivate yourself.")
         return redirect(url_for("user_management"))
     cols = get_db_collections()
+    target = cols["users"].find_one({"email": user_email})
     cols["users"].delete_one({"email": user_email})
     log_event("USER_DEACTIVATED", "Medium", session["email"])
+    audit("USER_DELETED", f"Deleted user {user_email}")
+    # Notify the deleted user
+    if target:
+        send_email(
+            user_email,
+            "Your RC Corp Account Has Been Removed",
+            f"Hello,\n\nYour account ({user_email}) has been removed from the Royal Challengers system by a Super Admin.\n\nIf you believe this is a mistake, contact your administrator."
+        )
     flash(f"{user_email} has been deactivated.")
     return redirect(url_for("user_management"))
 
@@ -716,6 +902,207 @@ def dashboard_data():
             doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
     from flask import jsonify
     return jsonify({"log_count": len(logs), "high_count": sum(1 for l in logs if l["severity"] == "High")})
+
+@app.route("/setup_2fa")
+def setup_2fa():
+    if "email" not in session:
+        return redirect(url_for("login"))
+    import pyotp, qrcode, io, base64
+    cols = get_db_collections()
+    user = cols["users"].find_one({"email": session["email"]})
+    if user.get("totp_secret"):
+        flash("2FA is already enabled on your account.")
+        return redirect(url_for("dashboard"))
+    secret = pyotp.random_base32()
+    session["totp_setup_secret"] = secret
+    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=session["email"], issuer_name="RC Corp SOC")
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    return render_template("setup_2fa.html", qr_b64=qr_b64, secret=secret)
+
+@app.route("/confirm_2fa", methods=["POST"])
+def confirm_2fa():
+    if "email" not in session:
+        return redirect(url_for("login"))
+    import pyotp
+    secret = session.get("totp_setup_secret")
+    code = request.form.get("code", "").strip()
+    if not secret or not pyotp.TOTP(secret).verify(code):
+        flash("Invalid code. Please scan the QR again and try.")
+        return redirect(url_for("setup_2fa"))
+    cols = get_db_collections()
+    cols["users"].update_one({"email": session["email"]}, {"$set": {"totp_secret": secret}})
+    session.pop("totp_setup_secret", None)
+    log_event("2FA_ENABLED", "Low", session["email"])
+    flash("2FA enabled successfully! You will need your authenticator app on next login.")
+    return redirect(url_for("dashboard"))
+
+@app.route("/verify_2fa", methods=["GET", "POST"])
+def verify_2fa():
+    if "2fa_pending_email" not in session:
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        import pyotp
+        code = request.form.get("code", "").strip()
+        email = session["2fa_pending_email"]
+        cols = get_db_collections()
+        user = cols["users"].find_one({"email": email})
+        if user and pyotp.TOTP(user["totp_secret"]).verify(code):
+            session.pop("2fa_pending_email", None)
+            session.pop("2fa_pending_role", None)
+            session["email"] = email
+            session["role"] = user.get("role", "Employee")
+            session["last_active"] = datetime.now(timezone.utc).timestamp()
+            log_event("LOGIN_SUCCESS_2FA", "Low", email)
+            record_login(email, get_request_ip(), success=True)
+            return redirect(url_for("dashboard"))
+        log_event("2FA_FAILED", "High", email)
+        flash("Invalid 2FA code. Please try again.")
+    return render_template("verify_2fa.html")
+
+@app.route("/disable_2fa", methods=["POST"])
+def disable_2fa():
+    if "email" not in session:
+        return redirect(url_for("login"))
+    cols = get_db_collections()
+    cols["users"].update_one({"email": session["email"]}, {"$unset": {"totp_secret": ""}})
+    log_event("2FA_DISABLED", "Medium", session["email"])
+    flash("2FA has been disabled on your account.")
+    return redirect(url_for("dashboard"))
+
+@app.route("/change_password", methods=["GET", "POST"])
+def change_password():
+    expired_email = session.get("pwd_expired_email") or session.get("email")
+    if not expired_email:
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        cols = get_db_collections()
+        new_pw = request.form.get("password")
+        confirm_pw = request.form.get("confirm_password")
+        if new_pw != confirm_pw:
+            flash("Passwords do not match.")
+            return render_template("change_password.html")
+        if len(new_pw) < 8:
+            flash("Password must be at least 8 characters.")
+            return render_template("change_password.html")
+        cols["users"].update_one({"email": expired_email}, {"$set": {
+            "password": generate_password_hash(new_pw),
+            "password_changed_at": datetime.now(timezone.utc)
+        }})
+        audit("PASSWORD_CHANGED", f"{expired_email} changed their password")
+        log_event("PASSWORD_CHANGED", "Low", expired_email)
+        session.pop("pwd_expired_email", None)
+        flash("Password updated successfully. Please login.")
+        return redirect(url_for("login"))
+    return render_template("change_password.html")
+
+@app.route("/profile")
+def profile():
+    if "email" not in session:
+        return redirect(url_for("login"))
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    user = cols["users"].find_one({"email": session["email"]}, {"password": 0})
+    if not user:
+        return redirect(url_for("logout"))
+    history = user.get("login_history", [])[-10:][::-1]
+    for h in history:
+        if "timestamp" in h and hasattr(h["timestamp"], "strftime"):
+            h["timestamp"] = h["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+    return render_template("profile.html", user=user, login_history=history)
+
+@app.route("/assign_incident/<incident_id>", methods=["POST"])
+def assign_incident(incident_id):
+    if session.get("role") not in ["Super Admin", "Admin"]:
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    assignee = request.form.get("assignee")
+    cols["reports"].update_one(
+        {"incident_id": incident_id},
+        {"$set": {"assigned_to": assignee, "assigned_by": session["email"], "assigned_at": datetime.now(timezone.utc)}}
+    )
+    audit("INCIDENT_ASSIGNED", f"Incident {incident_id} assigned to {assignee}")
+    log_event("INCIDENT_ASSIGNED", "Low", session["email"])
+    send_email(assignee, "📋 Incident Assigned to You",
+        f"Hello,\n\nIncident {incident_id} has been assigned to you by {session['email']}.\n\nPlease login to the SOC dashboard to review and take action.")
+    flash(f"Incident {incident_id} assigned to {assignee}.")
+    return redirect(url_for("dashboard"))
+
+@app.route("/audit_log")
+def audit_log():
+    if session.get("role") != "Super Admin":
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "Database Offline", 500
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    db = cols["logs"]._Collection__database
+    entries = list(db["audit_logs"].find().sort("timestamp", -1).limit(50))
+    for e in entries:
+        e["_id"] = str(e["_id"])
+        if "timestamp" in e and hasattr(e["timestamp"], "strftime"):
+            e["timestamp"] = e["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+    return render_template("audit_log.html", entries=entries)
+
+@app.route("/api/search_logs")
+def search_logs():
+    if "email" not in session:
+        return {"error": "unauthorized"}, 401
+    cols = get_db_collections()
+    if not cols:
+        return {"error": "db offline"}, 500
+    q = request.args.get("q", "").strip()
+    from zoneinfo import ZoneInfo
+    from flask import jsonify
+    ist = ZoneInfo("Asia/Kolkata")
+    query = {"$or": [{"ip": {"$regex": q, "$options": "i"}},
+                     {"email": {"$regex": q, "$options": "i"}},
+                     {"event": {"$regex": q, "$options": "i"}}]} if q else {}
+    logs = list(cols["logs"].find(query).sort("timestamp", -1).limit(50))
+    for doc in logs:
+        doc["_id"] = str(doc["_id"])
+        if "timestamp" in doc and hasattr(doc["timestamp"], "strftime"):
+            doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+    return jsonify(logs)
+
+@app.route("/daily_digest")
+def daily_digest():
+    """Manually trigger daily digest — also called by cron."""
+    if session.get("role") != "Super Admin" and request.args.get("key") != os.getenv("SECRET_KEY"):
+        return "Unauthorized", 403
+    cols = get_db_collections()
+    if not cols:
+        return "DB Offline", 500
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    total_logs = cols["logs"].count_documents({"timestamp": {"$gte": since}})
+    high = cols["logs"].count_documents({"timestamp": {"$gte": since}, "severity": "High"})
+    medium = cols["logs"].count_documents({"timestamp": {"$gte": since}, "severity": "Medium"})
+    blocked = cols["blocked"].count_documents({"blocked_at": {"$gte": since}})
+    incidents = cols["reports"].count_documents({"timestamp": {"$gte": since}})
+    body = f"""RC Corp SOC — Daily Security Digest
+{'='*40}
+Date: {datetime.now(timezone.utc).astimezone(ist).strftime('%d-%m-%Y')}
+
+Last 24 Hours Summary:
+  Total Security Events : {total_logs}
+  High Severity         : {high}
+  Medium Severity       : {medium}
+  New Incidents         : {incidents}
+  IPs Blocked           : {blocked}
+
+Login to the SOC Dashboard for full details.
+"""
+    send_alert_emails("📊 RC Corp Daily Security Digest", body)
+    return "Digest sent.", 200
 
 @app.route("/logout")
 def logout():

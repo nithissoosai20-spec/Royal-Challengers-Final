@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container" style="max-width:480px;">
+    <h2>🔐 Enable Two-Factor Authentication</h2>
+    <p style="color:#666; margin-bottom:20px; font-size:0.9rem;">Scan the QR code below with <strong>Google Authenticator</strong> or <strong>Authy</strong>, then enter the 6-digit code to confirm.</p>
+
+    <div style="text-align:center; margin-bottom:20px;">
+        <img src="data:image/png;base64,{{ qr_b64 }}" alt="2FA QR Code" style="width:200px; height:200px; border:4px solid #c6a15b; border-radius:8px;">
+    </div>
+
+    <p style="text-align:center; font-size:0.8rem; color:#aaa; margin-bottom:6px;">Can't scan? Enter this key manually:</p>
+    <p style="text-align:center; font-family:monospace; font-size:1rem; color:#c6a15b; background:#1a1a1b; padding:10px; border-radius:6px; letter-spacing:2px; margin-bottom:20px;">{{ secret }}</p>
+
+    <form method="POST" action="/confirm_2fa">
+        <label>Enter 6-digit code from your app</label>
+        <input type="text" name="code" placeholder="000000" maxlength="6" required autocomplete="off" style="letter-spacing:4px; font-size:1.2rem; text-align:center;">
+        <button type="submit" class="btn" style="width:100%; margin-top:10px;">✅ Confirm & Enable 2FA</button>
+    </form>
+
+    <p style="text-align:center; margin-top:15px;"><a href="/dashboard" style="color:#aaa; font-size:0.85rem;">Cancel</a></p>
+</div>
+{% endblock %}

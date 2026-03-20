@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="soc-wrapper" style="max-width:800px;">
+    <div class="soc-header">
+        <h2>👤 My Profile</h2>
+        <a href="/dashboard" class="btn btn-outline">← Dashboard</a>
+    </div>
+
+    <!-- Profile Info -->
+    <div class="soc-section" style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+        <div class="sidebar-avatar" style="width:64px; height:64px; font-size:1.8rem; flex-shrink:0;">{{ user.email[0].upper() }}</div>
+        <div>
+            <p style="font-size:1.1rem; font-weight:700; color:var(--text);">{{ user.get('name', 'N/A') }}</p>
+            <p style="color:#aaa; font-size:0.88rem;">{{ user.email }}</p>
+            <span class="role-badge" style="margin-top:6px; display:inline-block;">{{ user.role }}</span>
+            <span style="margin-left:10px; font-size:0.78rem; color:#aaa;">Joined: {{ user.get('createdAt', 'N/A') }}</span>
+        </div>
+        <div style="margin-left:auto;">
+            {% if user.get('totp_secret') %}
+            <span style="color:#4caf50; font-weight:700;">✅ 2FA Enabled</span>
+            {% else %}
+            <a href="/setup_2fa" class="btn" style="padding:7px 16px; font-size:0.82rem;">Enable 2FA</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="soc-section">
+        <h3>🔑 Change Password</h3>
+        <a href="/change_password" class="btn btn-outline" style="font-size:0.85rem;">Change My Password</a>
+    </div>
+
+    <!-- Login History -->
+    <div class="soc-section">
+        <h3>🕐 Recent Login History</h3>
+        {% if login_history %}
+        <table class="soc-table">
+            <thead><tr><th>Time</th><th>IP</th><th>Location</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for h in login_history %}
+                <tr class="{{ 'row-low' if h.success else 'row-high' }}">
+                    <td>{{ h.timestamp }}</td>
+                    <td>{{ h.ip }}</td>
+                    <td>{{ (h.city + ', ' + h.country) if h.get('city') else '—' }}</td>
+                    <td>
+                        {% if h.success %}
+                        <span class="sev-badge low">Success</span>
+                        {% else %}
+                        <span class="sev-badge high">Failed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">No login history yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

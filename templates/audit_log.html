@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="soc-wrapper">
+    <div class="soc-header">
+        <h2>📋 Audit Trail</h2>
+        <a href="/dashboard" class="btn btn-outline">← Dashboard</a>
+    </div>
+    <div class="soc-section">
+        <h3>All Admin Actions (Last 50)</h3>
+        <table class="soc-table">
+            <thead><tr><th>Time</th><th>Actor</th><th>Role</th><th>Action</th><th>Details</th><th>IP</th></tr></thead>
+            <tbody>
+                {% for e in entries %}
+                <tr>
+                    <td>{{ e.timestamp }}</td>
+                    <td>{{ e.actor }}</td>
+                    <td><span class="role-badge">{{ e.role }}</span></td>
+                    <td><strong>{{ e.action }}</strong></td>
+                    <td>{{ e.details }}</td>
+                    <td>{{ e.ip }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="no-data">No audit entries yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
