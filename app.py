@@ -98,6 +98,32 @@ def send_voice_alert(message):
             print("❌ VOICE ALERT ERROR:", e)
     threading.Thread(target=_call).start()
 
+# ================= IP INTELLIGENCE =================
+def get_ip_intel(ip):
+    """Get GeoIP location + AbuseIPDB score for an IP. Returns dict."""
+    intel = {"country": "", "city": "", "isp": "", "abuse_score": 0, "abuse_reports": 0}
+    try:
+        geo = requests.get(f"http://ip-api.com/json/{ip}?fields=country,city,isp,status", timeout=3).json()
+        if geo.get("status") == "success":
+            intel["country"] = geo.get("country", "")
+            intel["city"] = geo.get("city", "")
+            intel["isp"] = geo.get("isp", "")
+    except:
+        pass
+    try:
+        abuse = requests.get(
+            "https://api.abuseipdb.com/api/v2/check",
+            headers={"Key": os.getenv("ABUSEIPDB_KEY"), "Accept": "application/json"},
+            params={"ipAddress": ip, "maxAgeInDays": 90},
+            timeout=3
+        ).json()
+        data = abuse.get("data", {})
+        intel["abuse_score"] = data.get("abuseConfidenceScore", 0)
+        intel["abuse_reports"] = data.get("totalReports", 0)
+    except:
+        pass
+    return intel
+
 # ================= IP BLOCKING =================
 def get_request_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
@@ -107,12 +133,21 @@ def block_ip(ip, reason):
         cols = get_db_collections()
         if not cols:
             return
+        intel = get_ip_intel(ip)
         cols["blocked"].update_one(
             {"ip": ip},
-            {"$set": {"ip": ip, "reason": reason, "blocked_at": datetime.now(timezone.utc)}},
+            {"$set": {
+                "ip": ip, "reason": reason,
+                "blocked_at": datetime.now(timezone.utc),
+                "country": intel["country"],
+                "city": intel["city"],
+                "isp": intel["isp"],
+                "abuse_score": intel["abuse_score"],
+                "abuse_reports": intel["abuse_reports"]
+            }},
             upsert=True
         )
-        print(f"🚫 IP BLOCKED: {ip}")
+        print(f"🚫 IP BLOCKED: {ip} | {intel['city']}, {intel['country']} | Abuse: {intel['abuse_score']}%")
     except Exception as e:
         print(f"❌ BLOCK IP ERROR: {e}")
 
@@ -132,12 +167,16 @@ def log_event(event, severity="Low", email="Anonymous"):
         return
     try:
         ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+        intel = get_ip_intel(ip) if severity in ("High", "Medium") else {}
         cols["logs"].insert_one({
             "timestamp": datetime.now(timezone.utc),
             "event": event.upper(),
             "severity": severity,
             "email": email,
-            "ip": ip
+            "ip": ip,
+            "country": intel.get("country", ""),
+            "city": intel.get("city", ""),
+            "abuse_score": intel.get("abuse_score", 0)
         })
     except:
         pass

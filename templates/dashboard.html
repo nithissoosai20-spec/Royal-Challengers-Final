@@ -118,7 +118,7 @@
         <h3>🔒 Security Logs</h3>
         <table class="soc-table">
             <thead>
-                <tr><th>Time</th><th>Event</th><th>Severity</th><th>User</th><th>IP</th></tr>
+                <tr><th>Time</th><th>Event</th><th>Severity</th><th>User</th><th>IP</th><th>Location</th><th>Abuse Score</th></tr>
             </thead>
             <tbody>
                 {% for log in logs %}
@@ -128,6 +128,12 @@
                     <td><span class="sev-badge {{ log.severity | lower }}">{{ log.severity }}</span></td>
                     <td>{{ log.email }}</td>
                     <td>{{ log.ip }}</td>
+                    <td>{{ (log.city + ', ' + log.country) if log.get('city') else '—' }}</td>
+                    <td>
+                        {% if log.get('abuse_score') %}
+                            <span class="abuse-badge {{ 'abuse-high' if log.abuse_score > 50 else 'abuse-low' }}">{{ log.abuse_score }}%</span>
+                        {% else %}—{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -140,12 +146,19 @@
         <h3>🚫 Blocked IPs</h3>
         <table class="soc-table">
             <thead>
-                <tr><th>IP Address</th><th>Reason</th><th>Blocked At</th><th>Action</th></tr>
+                <tr><th>IP</th><th>Location</th><th>ISP</th><th>Abuse Score</th><th>Reason</th><th>Blocked At</th><th>Action</th></tr>
             </thead>
             <tbody>
                 {% for b in blocked_ips %}
                 <tr class="row-high">
                     <td>{{ b.ip }}</td>
+                    <td>{{ (b.city + ', ' + b.country) if b.get('city') else '—' }}</td>
+                    <td>{{ b.isp if b.get('isp') else '—' }}</td>
+                    <td>
+                        {% if b.get('abuse_score') %}
+                            <span class="abuse-badge {{ 'abuse-high' if b.abuse_score > 50 else 'abuse-low' }}">{{ b.abuse_score }}% ({{ b.abuse_reports }} reports)</span>
+                        {% else %}—{% endif %}
+                    </td>
                     <td>{{ b.reason }}</td>
                     <td>{{ b.blocked_at }}</td>
                     <td>

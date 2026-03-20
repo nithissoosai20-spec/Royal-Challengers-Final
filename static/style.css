@@ -179,6 +179,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .profile-logout { color: var(--red) !important; }
 .profile-logout:hover { background: #fff5f5 !important; }
 
+.abuse-badge { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+.abuse-high { background: #ffcccc; color: #900; }
+.abuse-low { background: #e2f0d9; color: #2e7d32; }
+
 /* ===== EXPORT BUTTONS ===== */
 .export-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .export-btn { padding: 7px 16px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; text-decoration: none; transition: opacity 0.2s; }
