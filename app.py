@@ -962,6 +962,19 @@ def verify_2fa():
             record_login(email, get_request_ip(), success=True)
             return redirect(url_for("dashboard"))
         log_event("2FA_FAILED", "High", email)
+        # Alert after 3 failed 2FA attempts
+        from datetime import timedelta
+        cols2 = get_db_collections()
+        since = datetime.now(timezone.utc) - timedelta(minutes=30)
+        fail_count = cols2["logs"].count_documents({"email": email, "event": "2FA_FAILED", "timestamp": {"$gte": since}}) if cols2 else 0
+        if fail_count >= 3:
+            ip = get_request_ip()
+            send_alert_emails(
+                "🚨 Multiple 2FA Failures Detected!",
+                f"User {email} has failed 2FA verification {fail_count} times in the last 30 minutes.\nIP: {ip}\nThis may indicate an account compromise attempt."
+            )
+            send_email(email, "⚠️ Security Alert: Failed 2FA Attempts on Your Account",
+                f"Hello,\n\nWe detected {fail_count} failed 2FA login attempts on your account ({email}) from IP {ip}.\n\nIf this was not you, contact your SOC team immediately.")
         flash("Invalid 2FA code. Please try again.")
     return render_template("verify_2fa.html")
 
