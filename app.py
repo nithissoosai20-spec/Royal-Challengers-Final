@@ -589,9 +589,9 @@ def login():
                 if pwd_changed.tzinfo is None:
                     pwd_changed = pwd_changed.replace(tzinfo=timezone.utc)
                 if (datetime.now(timezone.utc) - pwd_changed).days > 90:
-                session["pwd_expired_email"] = email
-                flash("Your password has expired. Please set a new password.")
-                return redirect(url_for("change_password"))
+                    session["pwd_expired_email"] = email
+                    flash("Your password has expired. Please set a new password.")
+                    return redirect(url_for("change_password"))
             if user.get("totp_secret"):
                 session["2fa_pending_email"] = email
                 session["2fa_pending_role"] = user.get("role", "Employee")
