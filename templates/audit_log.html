@@ -13,7 +13,7 @@
                 {% for e in entries %}
                 <tr>
                     <td>{{ e.timestamp }}</td>
-                    <td>{{ e.actor }}</td>
+                    <td>{% if e.get('actor_name') %}<strong>{{ e.actor_name }}</strong><br><small style="color:#888;">{{ e.actor }}</small>{% else %}{{ e.actor }}{% endif %}</td>
                     <td><span class="role-badge">{{ e.role }}</span></td>
                     <td><strong>{{ e.action }}</strong></td>
                     <td>{{ e.details }}</td>

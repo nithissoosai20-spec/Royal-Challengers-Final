@@ -7,7 +7,7 @@
     <div class="soc-header">
         <div>
             <h2>🛡️ SOC Dashboard</h2>
-            <p style="color:#aaa; font-size:0.85rem;">{{ session['email'] }} &nbsp;|&nbsp; <span style="color:#c6a15b;">{{ session['role'] }}</span></p>
+            <p style="color:#aaa; font-size:0.85rem;">{{ current_user_name }} ({{ session['email'] }}) &nbsp;|&nbsp; <span style="color:#c6a15b;">{{ session['role'] }}</span></p>
         </div>
     </div>
 
@@ -92,7 +92,7 @@
                 {% for r in user_reports %}
                 <tr class="{{ 'row-high' if r.severity == 'High' or r.severity == 'Critical' else 'row-medium' if r.severity == 'Medium' else 'row-low' }}">
                     <td>{{ r.incident_id }}</td>
-                    <td>{{ r.reporter }}</td>
+                    <td><strong>{{ r.reporter_name }}</strong><br><small style="color:#888;">{{ r.reporter }}</small></td>
                     <td>{{ r.type }}</td>
                     <td><span class="sev-badge {{ r.severity | lower }}">{{ r.severity }}</span></td>
                     <td><span class="status-badge {{ r.get('status', 'Open') | lower | replace(' ', '-') }}">{{ r.get('status', 'Open') }}</span></td>
@@ -111,7 +111,7 @@
                             <select name="assignee" class="status-select">
                                 <option value="">Assign to...</option>
                                 {% for a in analysts %}
-                                <option value="{{ a.email }}" {{ 'selected' if r.get('assigned_to') == a.email }}>{{ a.email }}</option>
+                                <option value="{{ a.email }}" {{ 'selected' if r.get('assigned_to') == a.email }}>{{ a.name }} ({{ a.email }})</option>
                                 {% endfor %}
                             </select>
                             <button type="submit" class="tbl-btn approve">Assign</button>
@@ -150,7 +150,7 @@
                     <td>{{ log.timestamp }}</td>
                     <td>{{ log.event }}</td>
                     <td><span class="sev-badge {{ log.severity | lower }}">{{ log.severity }}</span></td>
-                    <td>{{ log.email }}</td>
+                    <td>{% if log.get('user_name') %}<strong>{{ log.user_name }}</strong><br><small style="color:#888;">{{ log.email }}</small>{% else %}{{ log.email }}{% endif %}</td>
                     <td>{{ log.ip }}</td>
                     <td>{{ (log.city + ', ' + log.country) if log.get('city') else '—' }}</td>
                     <td>

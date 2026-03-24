@@ -336,6 +336,20 @@ def dashboard():
         pending = list(cols["pending"].find({"role": "Security Analyst"}).sort("createdAt", -1))
     else:
         pending = []
+    
+    # Enrich reports with reporter names
+    for report in reports:
+        reporter_user = cols["users"].find_one({"email": report.get("reporter")}, {"name": 1})
+        report["reporter_name"] = reporter_user.get("name") if reporter_user else "Unknown"
+        if report.get("assigned_to"):
+            assignee_user = cols["users"].find_one({"email": report.get("assigned_to")}, {"name": 1})
+            report["assigned_to_name"] = assignee_user.get("name") if assignee_user else "Unknown"
+    
+    # Enrich logs with user names
+    for log in logs:
+        if log.get("email") and log["email"] != "Anonymous":
+            log_user = cols["users"].find_one({"email": log.get("email")}, {"name": 1})
+            log["user_name"] = log_user.get("name") if log_user else "Unknown"
 
     # Convert for JSON serialization + IST timezone
     from zoneinfo import ZoneInfo
@@ -356,10 +370,12 @@ def dashboard():
             if "blocked_at" in doc and hasattr(doc["blocked_at"], "strftime"):
                 doc["blocked_at"] = doc["blocked_at"].astimezone(_ist).strftime("%d-%m-%Y %H:%M:%S")
         blocked_ips = raw_blocked
-    analysts = list(cols["users"].find({"role": "Security Analyst"}, {"email": 1, "_id": 0}))
+    analysts = list(cols["users"].find({"role": "Security Analyst"}, {"email": 1, "name": 1, "_id": 0}))
+    current_user = cols["users"].find_one({"email": session["email"]}, {"name": 1, "totp_secret": 1})
     return render_template("dashboard.html", user_reports=reports, logs=logs, pending_users=pending,
                            blocked_ips=blocked_ips, analysts=analysts,
-                           current_user_2fa=bool(cols["users"].find_one({"email": session["email"]}, {"totp_secret": 1}).get("totp_secret")))
+                           current_user_name=current_user.get("name", "User"),
+                           current_user_2fa=bool(current_user.get("totp_secret")))
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -598,6 +614,7 @@ def login():
                 return redirect(url_for("verify_2fa"))
             session["email"] = email
             session["role"] = user.get("role", "Employee")
+            session["user_name"] = user.get("name", "User")
             session["last_active"] = datetime.now(timezone.utc).timestamp()
             log_event("LOGIN_SUCCESS", "Low", email)
             record_login(email, ip, success=True)
@@ -957,6 +974,7 @@ def verify_2fa():
             session.pop("2fa_pending_role", None)
             session["email"] = email
             session["role"] = user.get("role", "Employee")
+            session["user_name"] = user.get("name", "User")
             session["last_active"] = datetime.now(timezone.utc).timestamp()
             log_event("LOGIN_SUCCESS_2FA", "Low", email)
             record_login(email, get_request_ip(), success=True)
@@ -1059,11 +1077,16 @@ def audit_log():
         return "Database Offline", 500
     from zoneinfo import ZoneInfo
     ist = ZoneInfo("Asia/Kolkata")
+    cols = get_db_collections()
     entries = list(_mongo_client["royal_challengers_db"]["audit_logs"].find().sort("timestamp", -1).limit(50))
     for e in entries:
         e["_id"] = str(e["_id"])
         if "timestamp" in e and hasattr(e["timestamp"], "strftime"):
             e["timestamp"] = e["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
+        # Enrich with actor name
+        if e.get("actor") and e["actor"] != "Anonymous":
+            actor_user = cols["users"].find_one({"email": e["actor"]}, {"name": 1})
+            e["actor_name"] = actor_user.get("name") if actor_user else "Unknown"
     return render_template("audit_log.html", entries=entries)
 
 @app.route("/api/search_logs")

@@ -86,7 +86,7 @@
             <div class="sidebar-profile">
                 <div class="sidebar-avatar">{{ session.get('email')[0].upper() }}</div>
                 <div class="sidebar-profile-info">
-                    <p class="sidebar-profile-name">{{ session.get('email').split('@')[0] }}</p>
+                    <p class="sidebar-profile-name" title="{{ session.get('email') }}">{{ session.get('user_name', session.get('email').split('@')[0]) }}</p>
                     <span class="sidebar-role-badge">{{ session.get('role') }}</span>
                 </div>
             </div>
