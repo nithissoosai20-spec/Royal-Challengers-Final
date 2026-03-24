@@ -1097,18 +1097,51 @@ def search_logs():
     if not cols:
         return {"error": "db offline"}, 500
     q = request.args.get("q", "").strip()
+    severity = request.args.get("severity", "").strip()
+    page = int(request.args.get("page", 1))
+    per_page = 50
+    
     from zoneinfo import ZoneInfo
     from flask import jsonify
     ist = ZoneInfo("Asia/Kolkata")
-    query = {"$or": [{"ip": {"$regex": q, "$options": "i"}},
-                     {"email": {"$regex": q, "$options": "i"}},
-                     {"event": {"$regex": q, "$options": "i"}}]} if q else {}
-    logs = list(cols["logs"].find(query).sort("timestamp", -1).limit(50))
+    
+    # Build query
+    query = {}
+    if q:
+        query["$or"] = [
+            {"ip": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q, "$options": "i"}},
+            {"event": {"$regex": q, "$options": "i"}}
+        ]
+    if severity:
+        query["severity"] = severity
+    
+    # Get total count for pagination
+    total = cols["logs"].count_documents(query)
+    total_pages = (total + per_page - 1) // per_page
+    
+    # Fetch paginated logs
+    skip = (page - 1) * per_page
+    logs = list(cols["logs"].find(query).sort("timestamp", -1).skip(skip).limit(per_page))
+    
+    # Enrich with user names
+    for log in logs:
+        if log.get("email") and log["email"] != "Anonymous":
+            log_user = cols["users"].find_one({"email": log.get("email")}, {"name": 1})
+            log["user_name"] = log_user.get("name") if log_user else "Unknown"
+    
     for doc in logs:
         doc["_id"] = str(doc["_id"])
         if "timestamp" in doc and hasattr(doc["timestamp"], "strftime"):
             doc["timestamp"] = doc["timestamp"].astimezone(ist).strftime("%d-%m-%Y %H:%M:%S")
-    return jsonify(logs)
+    
+    return jsonify({
+        "logs": logs,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages
+    })
 
 @app.route("/daily_digest")
 def daily_digest():
