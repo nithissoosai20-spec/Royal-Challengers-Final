@@ -1,4 +1,40 @@
+# Environment and secrets
 .env
-.env
+.env.*
+.env.secret_backup
+*.env
+*.pem
+*.key
+
+# Template allowed
+!.env.example
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Local sensitive notes
+*credential*
+important.txt
+rc proj credentials.txt
+nmap cmds.txt
 Tibura Proj.txt
-*.txt
+
+# Backups
+.git_backup/
+*.bak
+*.backup
+
+# System / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
